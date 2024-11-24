@@ -39,14 +39,14 @@ namespace MelonUI.Default
         }
 
         private static readonly Dictionary<ProgressBarStyle, (char full, char empty)> StyleChars = new()
-    {
-        { ProgressBarStyle.Solid, ('█', '░') },
-        { ProgressBarStyle.Segmented, ('▰', '▱') },
-        { ProgressBarStyle.Dotted, ('●', '○') },
-        { ProgressBarStyle.Blocks, ('■', '□') },
-        { ProgressBarStyle.Ascii, ('=', ' ') },
-        { ProgressBarStyle.Loading, ('█', '░') }
-    };
+        {
+            { ProgressBarStyle.Solid, ('█', '░') },
+            { ProgressBarStyle.Segmented, ('▰', '▱') },
+            { ProgressBarStyle.Dotted, ('●', '○') },
+            { ProgressBarStyle.Blocks, ('■', '□') },
+            { ProgressBarStyle.Ascii, ('=', ' ') },
+            { ProgressBarStyle.Loading, ('█', '░') }
+        };
 
         public ProgressBar()
         {
@@ -57,7 +57,7 @@ namespace MelonUI.Default
         protected override void RenderContent(ConsoleBuffer buffer)
         {
             var background = IsFocused ? FocusedBackground : Background;
-            int contentWidth = ActualWidth - 2;  // Account for border
+            int contentWidth = ActualWidth - 1;
             int contentHeight = ActualHeight - 2;
 
             // Calculate the animated progress
@@ -137,20 +137,5 @@ namespace MelonUI.Default
             }
         }
 
-        public override void HandleKey(ConsoleKeyInfo keyInfo)
-        {
-            if (!IsFocused) return;
-
-            // Allow arrow keys to adjust progress when focused
-            switch (keyInfo.Key)
-            {
-                case ConsoleKey.LeftArrow:
-                    Progress = Math.Max(0f, Progress - 0.01f);
-                    break;
-                case ConsoleKey.RightArrow:
-                    Progress = Math.Min(1f, Progress + 0.01f);
-                    break;
-            }
-        }
     }
 }

@@ -74,19 +74,46 @@ namespace MelonUI.Base
             }
         }
 
-        // Write a string horizontally
+        public static int GetCharWidth(char c)
+        {
+            // This range covers most double-width Unicode characters
+            return (c >= '\u1100' && c <= '\u115F') ||  // Hangul
+                   (c >= '\u2E80' && c <= '\u9FFF') ||  // CJK
+                   (c >= '\uAC00' && c <= '\uD7AF') ||  // Hangul syllables
+                   (c >= '\uF900' && c <= '\uFAFF') ||  // CJK Compatibility
+                   (c >= '\uFE10' && c <= '\uFE19') ||  // Vertical forms
+                   (c >= '\uFE30' && c <= '\uFE6F') ||  // CJK Compatibility
+                   (c >= '\uFF00' && c <= '\uFF60') ||  // Fullwidth forms
+                   (c >= '\uFFE0' && c <= '\uFFE6') ||  // Fullwidth symbols
+                   (c == '→' || c == '←' || c == '↑' || c == '↓') // Common arrows
+                ? 2 : 1;
+        }
+
+        public static int GetStringWidth(string str)
+        {
+            int width = 0;
+            foreach (char c in str)
+            {
+                width += GetCharWidth(c);
+            }
+            return width;
+        }
+
+        // Modified string writing methods to handle wide characters
         public void WriteString(int x, int y, string text, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
         {
             if (string.IsNullOrEmpty(text)) return;
 
-            for (int i = 0; i < text.Length; i++)
+            int currentX = x;
+            foreach (char c in text)
             {
-                if (x + i >= Width) break;
-                SetPixel(x + i, y, text[i], foreground, background);
+                if (currentX >= Width) break;
+
+                SetPixel(currentX, y, c, foreground, background);
+                currentX += GetCharWidth(c);
             }
         }
 
-        // Write a string horizontally with word wrap
         public void WriteStringWrapped(int x, int y, string text, int maxWidth, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
         {
             if (string.IsNullOrEmpty(text)) return;
@@ -99,8 +126,10 @@ namespace MelonUI.Base
 
             foreach (string word in words)
             {
+                int wordWidth = GetStringWidth(word);
+
                 // Check if we need to wrap
-                if (currentX + word.Length > x + maxWidth)
+                if (currentX + wordWidth > x + maxWidth)
                 {
                     currentX = x;
                     currentY++;
@@ -109,18 +138,17 @@ namespace MelonUI.Base
 
                 // Write the word
                 WriteString(currentX, currentY, word, foreground, background);
-                currentX += word.Length + 1; // +1 for space
+                currentX += wordWidth + 1; // +1 for space
             }
         }
 
-        // Write a centered string
         public void WriteStringCentered(int y, string text, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
         {
             if (string.IsNullOrEmpty(text)) return;
-            int x = Math.Max(0, (Width - text.Length) / 2);
+            int textWidth = GetStringWidth(text);
+            int x = Math.Max(0, (Width - textWidth) / 2);
             WriteString(x, y, text, foreground, background);
         }
-
         // Write multiple lines of text
         public void WriteLines(int x, int y, IEnumerable<string> lines, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
         {

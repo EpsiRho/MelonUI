@@ -13,6 +13,7 @@ namespace MelonUI.Default
         public string Text { get; set; } = "";
         public int CursorPosition { get; private set; } = 0;
         public ConsoleColor TextColor { get; set; } = ConsoleColor.White;
+        public ConsoleColor CursorColor { get; set; } = ConsoleColor.Gray;
         public event Action<string> OnTextChanged;
 
         private const char BoxTopLeft = '┌';
@@ -21,6 +22,33 @@ namespace MelonUI.Default
         private const char BoxBottomRight = '┘';
         private const char BoxHorizontal = '─';
         private const char BoxVertical = '│';
+        public TextBox()
+        {
+            RegisterKeyboardControl(
+                ConsoleKey.LeftArrow,
+                () => { if (CursorPosition > 0) CursorPosition--; },
+                "Move cursor left"
+            );
+
+            RegisterKeyboardControl(
+                ConsoleKey.RightArrow,
+                () => { if (CursorPosition < Text.Length) CursorPosition++; },
+                "Move cursor right"
+            );
+
+            RegisterKeyboardControl(
+                ConsoleKey.Backspace,
+                () => {
+                    if (CursorPosition > 0)
+                    {
+                        Text = Text.Remove(CursorPosition - 1, 1);
+                        CursorPosition--;
+                        OnTextChanged?.Invoke(Text);
+                    }
+                },
+                "Delete character"
+            );
+        }
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
@@ -42,7 +70,16 @@ namespace MelonUI.Default
             // Draw cursor if focused
             if (IsFocused && CursorPosition < ActualWidth - 2)
             {
-                buffer.SetPixel(CursorPosition + 1, 1, '_', FocusedBorderColor, Background);
+                if(Text.Length <= CursorPosition)
+                {
+                    buffer.SetPixel(CursorPosition + 1, 1, ' ', TextColor, CursorColor);
+
+                }
+                else
+                {
+                    buffer.SetPixel(CursorPosition + 1, 1, Text[CursorPosition], TextColor, CursorColor);
+
+                }
             }
 
             //return buffer;

@@ -1,141 +1,153 @@
-﻿using MelonUI.Base;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace MelonUI.Default
+namespace MelonUI.Base
 {
     public class GridContainer : UIElement
     {
-        public int Rows { get; set; }
-        public int Columns { get; set; }
-        public int CellPadding { get; set; } = 1;
-        public bool EqualCellSize { get; set; } = true;
-
-        private int _selectedCell = 0;
-        private List<(UIElement element, int row, int col)> _gridItems = new();
-
-        public GridContainer()
+        private class GridPosition
         {
-            ShowBorder = true;
+            public UIElement Element { get; set; }
+            public int Row { get; set; }
+            public int Column { get; set; }
         }
 
-        public void AddElement(UIElement element, int row, int col)
+        private readonly int _rows;
+        private readonly int[] _columnsPerRow;
+        private readonly List<GridPosition> _positions = new();
+        private Dictionary<ConsoleKey, List<KeyboardControl>> _aggregatedControls = new();
+        private bool _animateExpansion;
+        private int _currentAnimationStep;
+        private const int AnimationSteps = 4;
+        private int _renderCounter;
+
+        public GridContainer(int rows, bool animateExpansion = false, params int[] columnsPerRow)
         {
-            if (row >= Rows || col >= Columns)
-                throw new ArgumentException($"Position ({row},{col}) is outside grid bounds ({Rows},{Columns})");
+            _rows = rows;
+            _columnsPerRow = columnsPerRow;
+            ShowBorder = false; // Disable default border, as we will draw our own
+            _animateExpansion = animateExpansion;
+            _currentAnimationStep = animateExpansion ? 1 : AnimationSteps;
+            _renderCounter = 0;
+        }
 
-            // Remove focus capability from the element
-            element.IsFocused = false;
-
-            _gridItems.Add((element, row, col));
+        public void AddElement(UIElement element, int row, int column)
+        {
+            _positions.Add(new GridPosition
+            {
+                Element = element,
+                Row = row,
+                Column = column
+            });
             Children.Add(element);
+            element.Parent = this;
 
-            // Update grid dimensions if needed
-            Rows = Math.Max(Rows, row + 1);
-            Columns = Math.Max(Columns, col + 1);
+            foreach (var control in element.GetKeyboardControls())
+            {
+                if (!_aggregatedControls.ContainsKey(control.Key))
+                {
+                    _aggregatedControls[control.Key] = new List<KeyboardControl>();
+                }
+                _aggregatedControls[control.Key].Add(control);
+            }
         }
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
-            var background = IsFocused ? FocusedBackground : Background;
+            // Calculate the layout for all elements first
+            int innerWidth = buffer.Width - (ShowBorder ? 2 : 0);
+            int innerHeight = buffer.Height - (ShowBorder ? 2 : 0);
 
-            // Calculate cell dimensions
-            int contentWidth = ActualWidth - 2;  // Account for border
-            int contentHeight = ActualHeight - 2;
+            // Determine the current height and width based on animation step
+            int animatedWidth = innerWidth * _currentAnimationStep / AnimationSteps;
+            int animatedHeight = innerHeight * _currentAnimationStep / AnimationSteps;
 
-            int cellWidth = (contentWidth - (CellPadding * (Columns - 1))) / Columns;
-            int cellHeight = (contentHeight - (CellPadding * (Rows - 1))) / Rows;
+            // Calculate starting position to center the animation
+            int startXOffset = (buffer.Width - animatedWidth) / 2;
+            int startYOffset = (buffer.Height - animatedHeight) / 2;
+            int rowHeight = (animatedHeight-1) / _rows;
 
-            // If not using equal cell sizes, we need to calculate each cell's size based on its content
-            if (!EqualCellSize)
+            // Draw the border scaled with the animation
+            DrawAnimatedBorder(buffer, animatedWidth, animatedHeight, startXOffset, startYOffset);
+
+            foreach (var pos in _positions)
             {
-                // TODO: Implement variable cell sizing based on content
-                // For now, we'll use equal sizing
+                int columnWidth =( animatedWidth / _columnsPerRow[pos.Row]) - 1;
+                int startX = startXOffset + (columnWidth * pos.Column) + 1; // Adjust for accurate positioning
+                int startY = startYOffset + (rowHeight * pos.Row) + 1; // Adjust for accurate positioning
+                int adjustedColumnWidth = columnWidth;
+                int adjustedRowHeight = rowHeight;
+
+                // Ensure the last column and row fit perfectly within the border
+                if (pos.Column == _columnsPerRow[pos.Row] - 1)
+                {
+                    adjustedColumnWidth = animatedWidth - (columnWidth * pos.Column) - 2;
+                }
+                if (pos.Row == _rows - 1)
+                {
+                    adjustedRowHeight = animatedHeight - (rowHeight * pos.Row) - 2;
+                }
+
+                pos.Element.RelativeWidth = adjustedColumnWidth.ToString();
+                pos.Element.RelativeHeight = adjustedRowHeight.ToString();
+
+                pos.Element.CalculateLayout(startX, startY, adjustedColumnWidth, adjustedRowHeight);
+                var elementBuffer = pos.Element.Render();
+                buffer.Write(pos.Element.ActualX, pos.Element.ActualY, elementBuffer);
             }
 
-            // Render each cell
-            foreach (var (element, row, col) in _gridItems)
+
+
+            // If animation is enabled and not complete, increment the step after a few renders
+            if (_animateExpansion && _currentAnimationStep < AnimationSteps)
             {
-                // Calculate cell position
-                int cellX = 1 + (col * (cellWidth + CellPadding));
-                int cellY = 1 + (row * (cellHeight + CellPadding));
-
-                // Calculate if this cell is selected
-                int cellIndex = row * Columns + col;
-                bool isSelected = IsFocused && cellIndex == _selectedCell;
-
-                // Update element properties
-                element.X = cellX;
-                element.Y = cellY;
-                element.RelativeWidth = cellWidth.ToString();
-                element.RelativeHeight = cellHeight.ToString();
-
-                // Create a sub-buffer for this cell
-                var cellBuffer = new ConsoleBuffer(cellWidth, cellHeight);
-                if (isSelected)
+                _renderCounter++;
+                if (_renderCounter >= 3) // Update animation step after every few renders
                 {
-                    cellBuffer.Clear(ConsoleColor.DarkBlue);
+                    _currentAnimationStep++;
+                    _renderCounter = 0;
                 }
-                else
-                {
-                    cellBuffer.Clear(background);
-                }
+            }
+        }
 
-                // Render the element into the cell buffer
-                var elementBuffer = element.Render();
-                cellBuffer.WriteBuffer(0, 0, elementBuffer);
+        private void DrawAnimatedBorder(ConsoleBuffer buffer, int width, int height, int offsetX, int offsetY)
+        {
+            var foreground = IsFocused ? FocusedBorderColor : BorderColor;
+            var background = IsFocused ? FocusedBackground : Background;
 
-                // Copy the cell buffer to the main buffer
-                buffer.WriteBuffer(cellX, cellY, cellBuffer);
+            // Draw corners
+            buffer.SetPixel(offsetX, offsetY, BoxTopLeft, foreground, background);
+            buffer.SetPixel(offsetX + width - 1, offsetY, BoxTopRight, foreground, background);
+            buffer.SetPixel(offsetX, offsetY + height - 1, BoxBottomLeft, foreground, background);
+            buffer.SetPixel(offsetX + width - 1, offsetY + height - 1, BoxBottomRight, foreground, background);
+
+            // Draw top and bottom edges
+            for (int x = 1; x < width - 1; x++)
+            {
+                buffer.SetPixel(offsetX + x, offsetY, BoxHorizontal, foreground, background);
+                buffer.SetPixel(offsetX + x, offsetY + height - 1, BoxHorizontal, foreground, background);
+            }
+
+            // Draw left and right edges
+            for (int y = 1; y < height - 1; y++)
+            {
+                buffer.SetPixel(offsetX, offsetY + y, BoxVertical, foreground, background);
+                buffer.SetPixel(offsetX + width - 1, offsetY + y, BoxVertical, foreground, background);
             }
         }
 
         public override void HandleKey(ConsoleKeyInfo keyInfo)
         {
-            if (!IsFocused || _gridItems.Count == 0) return;
-
-            int currentRow = _selectedCell / Columns;
-            int currentCol = _selectedCell % Columns;
-            int newRow = currentRow;
-            int newCol = currentCol;
-
-            switch (keyInfo.Key)
+            if (_aggregatedControls.TryGetValue(keyInfo.Key, out var controls))
             {
-                case ConsoleKey.UpArrow:
-                    newRow = Math.Max(0, currentRow - 1);
-                    break;
-                case ConsoleKey.DownArrow:
-                    newRow = Math.Min(Rows - 1, currentRow + 1);
-                    break;
-                case ConsoleKey.LeftArrow:
-                    newCol = Math.Max(0, currentCol - 1);
-                    break;
-                case ConsoleKey.RightArrow:
-                    newCol = Math.Min(Columns - 1, currentCol + 1);
-                    break;
-                default:
-                    // Forward the key press to the selected element
-                    if (_selectedCell < _gridItems.Count)
+                foreach (var control in controls)
+                {
+                    if (control.Matches(keyInfo))
                     {
-                        _gridItems[_selectedCell].element.HandleKey(keyInfo);
+                        control.Action();
                     }
-                    break;
+                }
             }
-
-            // Update selected cell if it changed
-            int newSelected = newRow * Columns + newCol;
-            if (newSelected != _selectedCell && HasElementAt(newRow, newCol))
-            {
-                _selectedCell = newSelected;
-            }
-        }
-
-        private bool HasElementAt(int row, int col)
-        {
-            return _gridItems.Any(item => item.row == row && item.col == col);
         }
     }
 }

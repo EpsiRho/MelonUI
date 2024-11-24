@@ -20,6 +20,7 @@ namespace MelonUI.Managers
         public ConsoleWindowManager()
         {
             Console.CursorVisible = false;
+            Console.OutputEncoding = Encoding.UTF8;
             UpdateBufferSize();
         }
 
