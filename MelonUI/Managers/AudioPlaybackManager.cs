@@ -1,4 +1,5 @@
-﻿using NAudio.Wave;
+﻿using MelonUI.Base;
+using NAudio.Wave;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -9,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace MelonUI.Managers
 {
-    public class AudioPlaybackManager : IDisposable
+    public class AudioPlaybackManager : PlaybackManager
     {
         [DllImport("winmm.dll")]
         private static extern uint timeGetTime();
@@ -22,7 +23,6 @@ namespace MelonUI.Managers
 
         public WaveStream _reader;
         public WaveOutEvent _outputDevice;
-        private readonly string _filePath;
         private uint _startTime;
         private long _startPosition;
         private bool _isPlaying;
@@ -34,25 +34,25 @@ namespace MelonUI.Managers
 
         public AudioPlaybackManager(string filePath)
         {
-            _filePath = filePath;
+            FilePath = filePath;
             timeBeginPeriod(1);
             InitializeAudio();
         }
 
         private WaveStream CreateReader()
         {
-            string extension = Path.GetExtension(_filePath).ToLowerInvariant();
+            string extension = Path.GetExtension(FilePath).ToLowerInvariant();
 
             try
             {
                 if (extension == ".wav")
                 {
-                    return new WaveFileReader(_filePath);
+                    return new WaveFileReader(FilePath);
                 }
                 else
                 {
                     // For FLAC and other formats, wrap MediaFoundationReader in a buffered wave provider
-                    var mediaReader = new MediaFoundationReader(_filePath);
+                    var mediaReader = new MediaFoundationReader(FilePath);
                     var buffered = new BufferedWaveProvider(mediaReader.WaveFormat);
                     var waveProvider = new WaveChannel32(mediaReader);
                     return waveProvider;
@@ -65,7 +65,7 @@ namespace MelonUI.Managers
             }
         }
 
-        private void InitializeAudio()
+        public override void InitializeAudio()
         {
             lock (_seekLock)
             {
@@ -104,8 +104,17 @@ namespace MelonUI.Managers
                 }
             }
         }
+        public override bool GetPlayState()
+        {
+            lock (_seekLock)
+            {
+                if (_isDisposed) return false;
 
-        public void Play()
+                return _isPlaying;
+            }
+        }
+
+        public override void Play()
         {
             lock (_seekLock)
             {
@@ -129,7 +138,7 @@ namespace MelonUI.Managers
             }
         }
 
-        public void Pause()
+        public override void Pause()
         {
             lock (_seekLock)
             {
@@ -168,7 +177,7 @@ namespace MelonUI.Managers
             }
         }
 
-        public void Seek(float seconds)
+        public override void Seek(float seconds)
         {
             if (_isDisposed) return;
 
@@ -218,7 +227,7 @@ namespace MelonUI.Managers
             }
         }
 
-        public TimeSpan GetPosition()
+        public override TimeSpan GetPosition()
         {
             lock (_seekLock)
             {
@@ -257,7 +266,7 @@ namespace MelonUI.Managers
             Seek((float)(currentSeconds + offsetSeconds));
         }
 
-        public void SetVolume(float volume)
+        public override void SetVolume(float volume)
         {
             if (_isDisposed) return;
             try
@@ -269,10 +278,25 @@ namespace MelonUI.Managers
                 Debug.WriteLine($"SetVolume error: {ex.Message}");
             }
         }
+        public override float GetVolume()
+        {
+            if (_isDisposed) return 0.0f;
+            return _outputDevice.Volume;
+        }
 
-        public TimeSpan Duration => _reader?.TotalTime ?? TimeSpan.Zero;
+        public override TimeSpan GetDuration()
+        {
+            return _reader?.TotalTime ?? TimeSpan.Zero;
+        }
+        public TimeSpan Position
+        {
+            get
+            {
+                return GetPosition();
+            }
+        }
 
-        public void Dispose()
+        public override void Dispose()
         {
             if (_isDisposed) return;
 

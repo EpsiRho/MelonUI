@@ -1,6 +1,7 @@
 ﻿using MelonUI.Base;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Numerics;
 using System.Text;
@@ -12,8 +13,7 @@ namespace MelonUI.Default
     {
         public string Text { get; set; } = "";
         public int CursorPosition { get; private set; } = 0;
-        public ConsoleColor TextColor { get; set; } = ConsoleColor.White;
-        public ConsoleColor CursorColor { get; set; } = ConsoleColor.Gray;
+        public Color CursorColor { get; set; } = Color.Gray;
         public event Action<string> OnTextChanged;
 
         private const char BoxTopLeft = '┌';
@@ -64,7 +64,7 @@ namespace MelonUI.Default
             // Draw text
             for (int i = 0; i < Text.Length && i < ActualWidth - 2; i++)
             {
-                buffer.SetPixel(i + 1, 1, Text[i], TextColor, Background);
+                buffer.SetPixel(i + 1, 1, Text[i], Foreground, Background);
             }
 
             // Draw cursor if focused
@@ -72,12 +72,12 @@ namespace MelonUI.Default
             {
                 if(Text.Length <= CursorPosition)
                 {
-                    buffer.SetPixel(CursorPosition + 1, 1, ' ', TextColor, CursorColor);
+                    buffer.SetPixel(CursorPosition + 1, 1, ' ', Foreground, CursorColor);
 
                 }
                 else
                 {
-                    buffer.SetPixel(CursorPosition + 1, 1, Text[CursorPosition], TextColor, CursorColor);
+                    buffer.SetPixel(CursorPosition + 1, 1, Text[CursorPosition], Foreground, CursorColor);
 
                 }
             }

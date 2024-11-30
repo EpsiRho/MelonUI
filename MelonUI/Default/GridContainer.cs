@@ -1,7 +1,9 @@
-﻿using System;
+﻿using MelonUI.Base;
+using MelonUI.Managers;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-namespace MelonUI.Base
+namespace MelonUI.Default
 {
     public class GridContainer : UIElement
     {
@@ -17,9 +19,26 @@ namespace MelonUI.Base
         private readonly List<GridPosition> _positions = new();
         private Dictionary<ConsoleKey, List<KeyboardControl>> _aggregatedControls = new();
         private bool _animateExpansion;
+        private bool _animateCollapse;
         private int _currentAnimationStep;
-        private const int AnimationSteps = 4;
+        private const int AnimationSteps = 10;
         private int _renderCounter;
+        public ConsoleWindowManager _parentWindow;
+        private Action tempCloseAction;
+        public override ConsoleWindowManager ParentWindow
+        {
+            get
+            {
+                return _parentWindow;
+            }
+            set
+            {
+                if (value != _parentWindow)
+                {
+                    SetParentWindows(value);
+                }
+            }
+        }
 
         public GridContainer(int rows, bool animateExpansion = false, params int[] columnsPerRow)
         {
@@ -29,10 +48,21 @@ namespace MelonUI.Base
             _animateExpansion = animateExpansion;
             _currentAnimationStep = animateExpansion ? 1 : AnimationSteps;
             _renderCounter = 0;
+            IsVisible = true;
+        }
+        public void SetParentWindows(ConsoleWindowManager parent)
+        {
+            this._parentWindow = parent;
+            foreach(var pos in _positions)
+            {
+                pos.Element.ParentWindow = parent;
+            }
         }
 
         public void AddElement(UIElement element, int row, int column)
         {
+            element.Parent = this;
+            element.ParentWindow = this.ParentWindow;
             _positions.Add(new GridPosition
             {
                 Element = element,
@@ -40,20 +70,67 @@ namespace MelonUI.Base
                 Column = column
             });
             Children.Add(element);
-            element.Parent = this;
 
             foreach (var control in element.GetKeyboardControls())
             {
-                if (!_aggregatedControls.ContainsKey(control.Key))
+                if(!control.Key.HasValue)
                 {
-                    _aggregatedControls[control.Key] = new List<KeyboardControl>();
+                    control.Key = ConsoleKey.None;
                 }
-                _aggregatedControls[control.Key].Add(control);
+
+                if (!_aggregatedControls.ContainsKey(control.Key.Value))
+                {
+                    _aggregatedControls[control.Key.Value] = new List<KeyboardControl>();
+                }
+                _aggregatedControls[control.Key.Value].Add(control);
+            }
+        }
+        public void RemoveElement(UIElement element)
+        {
+            Children.Remove(element);
+            foreach (var control in element.GetKeyboardControls())
+            {
+                if (!control.Key.HasValue)
+                {
+                    control.Key = ConsoleKey.None;
+                }
+
+                if (_aggregatedControls.ContainsKey(control.Key.Value))
+                {
+                    _aggregatedControls[control.Key.Value].Remove(control);
+                }
             }
         }
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
+            if (!IsVisible)
+            {
+                _currentAnimationStep = 1;
+                _renderCounter = 0;
+                return;
+            }
+
+            if (_animateCollapse && _currentAnimationStep <= 1)
+            {
+                _animateCollapse = false;
+                IsVisible = false;
+                if (tempCloseAction != null)
+                {
+                    tempCloseAction();
+                    tempCloseAction = null;
+                }
+            }
+
+            if(_animateCollapse || _animateExpansion)
+            {
+                NeedsRecalculation = true;
+            }
+            else
+            {
+                NeedsRecalculation = false;
+            }
+
             // Calculate the layout for all elements first
             int innerWidth = buffer.Width - (ShowBorder ? 2 : 0);
             int innerHeight = buffer.Height - (ShowBorder ? 2 : 0);
@@ -88,8 +165,8 @@ namespace MelonUI.Base
                     adjustedRowHeight = animatedHeight - (rowHeight * pos.Row) - 2;
                 }
 
-                pos.Element.RelativeWidth = adjustedColumnWidth.ToString();
-                pos.Element.RelativeHeight = adjustedRowHeight.ToString();
+                pos.Element.Width = adjustedColumnWidth.ToString();
+                pos.Element.Height = adjustedRowHeight.ToString();
 
                 pos.Element.CalculateLayout(startX, startY, adjustedColumnWidth, adjustedRowHeight);
                 var elementBuffer = pos.Element.Render();
@@ -97,17 +174,33 @@ namespace MelonUI.Base
             }
 
 
-
-            // If animation is enabled and not complete, increment the step after a few renders
-            if (_animateExpansion && _currentAnimationStep < AnimationSteps)
+            if (_animateCollapse && _currentAnimationStep > 0)
             {
                 _renderCounter++;
-                if (_renderCounter >= 3) // Update animation step after every few renders
+                if (_renderCounter >= 1) // Update animation step after every few renders
+                {
+                    _currentAnimationStep--;
+                    _renderCounter = 0;
+                }
+            }
+
+            if (_animateExpansion  && !_animateCollapse && _currentAnimationStep < AnimationSteps)
+            {
+                _renderCounter++;
+                if (_renderCounter >= 1) // Update animation step after every few renders
                 {
                     _currentAnimationStep++;
                     _renderCounter = 0;
                 }
             }
+
+        }
+        public void AnimateClose(Action finalAction = null)
+        {
+            if (!IsVisible) return;
+            _animateCollapse = true;
+            _currentAnimationStep = AnimationSteps;
+            tempCloseAction = finalAction;
         }
 
         private void DrawAnimatedBorder(ConsoleBuffer buffer, int width, int height, int offsetX, int offsetY)
@@ -138,6 +231,7 @@ namespace MelonUI.Base
 
         public override void HandleKey(ConsoleKeyInfo keyInfo)
         {
+            bool match = false;
             if (_aggregatedControls.TryGetValue(keyInfo.Key, out var controls))
             {
                 foreach (var control in controls)
@@ -145,7 +239,28 @@ namespace MelonUI.Base
                     if (control.Matches(keyInfo))
                     {
                         control.Action();
+                        match = true;
                     }
+                }
+            }
+
+            if (_aggregatedControls.ContainsKey(ConsoleKey.None))
+            {
+                foreach (var wild in _aggregatedControls[ConsoleKey.None])
+                {
+                    if (wild.Matches(keyInfo))
+                    {
+                        wild.Action();
+                        match = true;
+                    }
+                }
+            }
+
+            foreach (var item in Children)
+            {
+                if (!item.DefaultKeyControl)
+                {
+                    item.HandleKey(keyInfo);
                 }
             }
         }

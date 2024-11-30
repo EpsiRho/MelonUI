@@ -1,5 +1,7 @@
-﻿using System;
+﻿using MelonUI.Managers;
+using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -8,29 +10,51 @@ namespace MelonUI.Base
 {
     public abstract class UIElement
     {
-        public int X { get; set; }
-        public int Y { get; set; }
-        public string RelativeX { get; set; }
-        public string RelativeY { get; set; }
-        public string RelativeWidth { get; set; }
-        public string RelativeHeight { get; set; }
+        public virtual bool DefaultKeyControl { get; set; } = true;
+        public virtual bool EnableCaching { get; set; } = true;
+        public virtual bool NeedsRecalculation { get; set; } = true;
+        public virtual bool RenderThreadDeleteMe { get; set; } = false;
+        public string X { get; set; }
+        public string Y { get; set; }
+        public string Width { get; set; }
+        public string Height { get; set; }
+        public int Z { get; set; } = 0;
         public int ActualX { get; protected set; }
         public int ActualY { get; protected set; }
         public int ActualWidth { get; protected set; }
         public int ActualHeight { get; protected set; }
         public bool IsFocused { get; set; }
+        public bool _IsVisible = true;
+        public bool ControlLock { get; set; }
+        public bool IsVisible
+        {
+            get
+            {
+                return _IsVisible;
+            }
+            set
+            {
+                if (_IsVisible != value)
+                {
+                    _IsVisible = value;
+                }
+            }
+        }
         public bool HasCalculatedLayout { get; set; }
         public UIElement Parent { get; set; }
+        public virtual ConsoleWindowManager ParentWindow { get; set; }
         public List<UIElement> Children { get; } = new List<UIElement>();
+        public string? Name { get; set; }
+        protected List<KeyboardControl> KeyboardControls { get; } = new();
 
         // Box drawing configuration
         public bool ShowBorder { get; set; } = true;
-        public virtual ConsoleColor BorderColor { get; set; } = ConsoleColor.Gray;
-        public virtual ConsoleColor FocusedBorderColor { get; set; } = ConsoleColor.Cyan;
-        public virtual ConsoleColor Foreground { get; set; } = ConsoleColor.White;
-        public virtual ConsoleColor Background { get; set; } = ConsoleColor.Black;
-        public virtual ConsoleColor FocusedForeground { get; set; } = ConsoleColor.Cyan;
-        public virtual ConsoleColor FocusedBackground { get; set; } = ConsoleColor.Black;
+        public virtual Color BorderColor { get; set; } = Color.Gray;
+        public virtual Color FocusedBorderColor { get; set; } = Color.Cyan;
+        public virtual Color Foreground { get; set; } = Color.White;
+        public virtual Color Background { get; set; } = Color.Black;
+        public virtual Color FocusedForeground { get; set; } = Color.Cyan;
+        public virtual Color FocusedBackground { get; set; } = Color.Black;
 
         // Box drawing characters - can be overridden by derived classes
         protected virtual char BoxTopLeft => '┌';
@@ -89,10 +113,10 @@ namespace MelonUI.Base
 
         public virtual void CalculateLayout(int parentX, int parentY, int parentWidth, int parentHeight)
         {
-            ActualX = Math.Max(0, ParseRelativeValue(RelativeX, parentWidth) + parentX);
-            ActualY = Math.Max(0, ParseRelativeValue(RelativeY, parentHeight) + parentY);
-            ActualWidth = Math.Min(parentWidth - (ActualX - parentX), ParseRelativeValue(RelativeWidth, parentWidth));
-            ActualHeight = Math.Min(parentHeight - (ActualY - parentY), ParseRelativeValue(RelativeHeight, parentHeight));
+            ActualX = Math.Max(0, ParseRelativeValue(X, parentWidth) + parentX);
+            ActualY = Math.Max(0, ParseRelativeValue(Y, parentHeight) + parentY);
+            ActualWidth = Math.Min(parentWidth - (ActualX - parentX), ParseRelativeValue(Width, parentWidth));
+            ActualHeight = Math.Min(parentHeight - (ActualY - parentY), ParseRelativeValue(Height, parentHeight));
 
             foreach (var child in Children)
             {
@@ -100,8 +124,106 @@ namespace MelonUI.Base
             }
         }
 
+        public int GetAbsoluteX()
+        {
+            int absoluteX = ActualX;
+            UIElement current = Parent;
 
-        private int ParseRelativeValue(string value, int parentSize)
+            while (current != null)
+            {
+                // Add parent's position
+                absoluteX += current.ActualX;
+
+                // If parent has a border, account for it
+                if (current.ShowBorder)
+                {
+                    absoluteX += 1;
+                }
+
+                current = current.Parent;
+            }
+
+            return absoluteX;
+        }
+
+        public int GetAbsoluteY()
+        {
+            int absoluteY = ActualY;
+            UIElement current = Parent;
+
+            while (current != null)
+            {
+                // Add parent's position
+                absoluteY += current.ActualY;
+
+                // If parent has a border, account for it
+                if (current.ShowBorder)
+                {
+                    absoluteY += 1;
+                }
+
+                current = current.Parent;
+            }
+
+            // Account for the CWM's title/status bar
+            if (ParentWindow != null)
+            {
+                absoluteY += 2;
+            }
+
+            return absoluteY;
+        }
+
+        public (int X, int Y) GetAbsolutePosition()
+        {
+            return (GetAbsoluteX(), GetAbsoluteY());
+        }
+
+        public string GetRootParentRelativeWidth()
+        {
+            UIElement current = this;
+            while (current.Parent != null)
+            {
+                current = current.Parent;
+            }
+            return current.Width;
+        }
+
+        public string GetRootParentRelativeHeight()
+        {
+            UIElement current = this;
+            while (current.Parent != null)
+            {
+                current = current.Parent;
+            }
+            return current.Height;
+        }
+
+        public string GetRootParentRelativeX()
+        {
+            UIElement current = this;
+            while (current.Parent != null)
+            {
+                current = current.Parent;
+            }
+            return current.X;
+        }
+
+        public string GetRootParentRelativeY()
+        {
+            UIElement current = this;
+            while (current.Parent != null)
+            {
+                current = current.Parent;
+            }
+            return current.Y;
+        }
+
+        public (string Width, string Height, string X, string Y) GetRootParentRelativeDimensions()
+        {
+            return (GetRootParentRelativeWidth(), GetRootParentRelativeHeight(), GetRootParentRelativeX(), GetRootParentRelativeY());
+        }
+        public int ParseRelativeValue(string value, int parentSize)
         {
             if (string.IsNullOrEmpty(value)) return 0;
 
@@ -124,9 +246,8 @@ namespace MelonUI.Base
             return 0;
         }
 
-        protected List<KeyboardControl> KeyboardControls { get; } = new();
 
-        protected void RegisterKeyboardControl(ConsoleKey key, Action action, string description,
+        public void RegisterKeyboardControl(ConsoleKey key, Action action, string description,
             bool requireShift = false, bool requireControl = false, bool requireAlt = false)
         {
             KeyboardControls.Add(new KeyboardControl
@@ -139,7 +260,7 @@ namespace MelonUI.Base
                 RequireAlt = requireAlt
             });
         }
-        protected void RegisterKeyboardControl(KeyboardControl keyControl)
+        public void RegisterKeyboardControl(KeyboardControl keyControl)
         {
             KeyboardControls.Add(keyControl);
         }

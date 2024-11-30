@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -9,10 +10,10 @@ namespace MelonUI.Base
     public struct ConsolePixel
     {
         public char Character;
-        public ConsoleColor Foreground;
-        public ConsoleColor Background;
+        public Color Foreground;
+        public Color Background;
 
-        public ConsolePixel(char character, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public ConsolePixel(char character, Color foreground, Color background)
         {
             Character = character;
             Foreground = foreground;

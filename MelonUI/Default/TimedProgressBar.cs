@@ -8,16 +8,17 @@ using System.Threading.Tasks;
 
 namespace MelonUI.Default
 {
-    public class ProgressBar : UIElement
+    public class TimedProgressBar : UIElement
     {
-        private float _progress = 0f;
-        public float Progress
+        private TimeSpan _maxTime;
+        private Func<TimeSpan> _getCurrentTime;
+
+        public TimeSpan MaxTime
         {
-            get => _progress;
-            set => _progress = Math.Clamp(value, 0f, 1f);
+            get => _maxTime;
+            set => _maxTime = value;
         }
 
-        public float? PreviousProgress { get; private set; }
         public DateTime LastUpdate { get; private set; }
 
         // Customization options
@@ -49,8 +50,10 @@ namespace MelonUI.Default
             { ProgressBarStyle.Loading, ('█', '░') }
         };
 
-        public ProgressBar()
+        public TimedProgressBar(TimeSpan maxTime, Func<TimeSpan> getCurrentTime)
         {
+            _maxTime = maxTime;
+            _getCurrentTime = getCurrentTime;
             ShowBorder = true;
             LastUpdate = DateTime.Now;
         }
@@ -61,8 +64,13 @@ namespace MelonUI.Default
             int contentWidth = ActualWidth - 1;
             int contentHeight = ActualHeight - 2;
 
+            // Calculate progress based on current time and max time
+            TimeSpan currentTime = _getCurrentTime();
+            float progress = (float)currentTime.Ticks / _maxTime.Ticks;
+            progress = Math.Clamp(progress, 0f, 1f);
+
             // Calculate the animated progress
-            float currentProgress = Progress;
+            float currentProgress = progress;
             if (AnimateProgress && PreviousProgress.HasValue)
             {
                 var timeSinceUpdate = (DateTime.Now - LastUpdate).TotalMilliseconds;
@@ -70,21 +78,18 @@ namespace MelonUI.Default
 
                 if (animationProgress < 1.0)
                 {
-                    currentProgress = (float)(PreviousProgress.Value + (Progress - PreviousProgress.Value) * animationProgress);
+                    currentProgress = (float)(PreviousProgress.Value + (progress - PreviousProgress.Value) * animationProgress);
                 }
             }
 
-            // Draw the text/percentage above the progress bar if we have enough height
+            // Draw the text showing the current time and max time above the progress bar if we have enough height
             if (contentHeight >= 2)
             {
                 string displayText = Text;
-                if (ShowPercentage)
-                {
-                    string percentage = $"{currentProgress * 100:F0}%";
-                    if (!string.IsNullOrEmpty(displayText))
-                        displayText += " - ";
-                    displayText += percentage;
-                }
+                string timeDisplay = $"{currentTime:hh\\:mm\\:ss} / {_maxTime:hh\\:mm\\:ss}";
+                if (!string.IsNullOrEmpty(displayText))
+                    displayText += " - ";
+                displayText += timeDisplay;
 
                 if (!string.IsNullOrEmpty(displayText))
                 {
@@ -131,12 +136,13 @@ namespace MelonUI.Default
             }
 
             // Store the current progress for animation
-            if (Progress != PreviousProgress)
+            if (progress != PreviousProgress)
             {
-                PreviousProgress = Progress;
+                PreviousProgress = progress;
                 LastUpdate = DateTime.Now;
             }
         }
 
+        public float? PreviousProgress { get; private set; }
     }
 }

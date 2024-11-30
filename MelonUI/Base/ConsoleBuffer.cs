@@ -1,5 +1,7 @@
-﻿using System;
+﻿using Pastel;
+using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -21,7 +23,7 @@ namespace MelonUI.Base
             Height = Math.Max(1, height);
             Buffer = new ConsolePixel[Height, Width];
             RenderBuffer = new char[MaxBufferSize];
-            Clear();
+            Clear(Color.Black);
         }
 
         public void Resize(int newWidth, int newHeight)
@@ -42,9 +44,9 @@ namespace MelonUI.Base
             Height = newHeight;
         }
 
-        public void Clear(ConsoleColor background = ConsoleColor.Black)
+        public void Clear(Color background)
         {
-            var emptyPixel = new ConsolePixel(' ', ConsoleColor.White, background);
+            var emptyPixel = new ConsolePixel(' ', Color.White, background);
             for (int y = 0; y < Height; y++)
                 for (int x = 0; x < Width; x++)
                     Buffer[y, x] = emptyPixel;
@@ -66,7 +68,7 @@ namespace MelonUI.Base
             }
         }
 
-        public void SetPixel(int x, int y, char c, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public void SetPixel(int x, int y, char c, Color foreground, Color background)
         {
             if (x >= 0 && x < Width && y >= 0 && y < Height)
             {
@@ -100,7 +102,7 @@ namespace MelonUI.Base
         }
 
         // Modified string writing methods to handle wide characters
-        public void WriteString(int x, int y, string text, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public void WriteString(int x, int y, string text, Color foreground, Color background)
         {
             if (string.IsNullOrEmpty(text)) return;
 
@@ -114,7 +116,7 @@ namespace MelonUI.Base
             }
         }
 
-        public void WriteStringWrapped(int x, int y, string text, int maxWidth, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public void WriteStringWrapped(int x, int y, string text, int maxWidth, Color foreground, Color background)
         {
             if (string.IsNullOrEmpty(text)) return;
             maxWidth = Math.Min(maxWidth, Width - x);
@@ -142,7 +144,7 @@ namespace MelonUI.Base
             }
         }
 
-        public void WriteStringCentered(int y, string text, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public void WriteStringCentered(int y, string text, Color foreground, Color background)
         {
             if (string.IsNullOrEmpty(text)) return;
             int textWidth = GetStringWidth(text);
@@ -150,7 +152,7 @@ namespace MelonUI.Base
             WriteString(x, y, text, foreground, background);
         }
         // Write multiple lines of text
-        public void WriteLines(int x, int y, IEnumerable<string> lines, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public void WriteLines(int x, int y, IEnumerable<string> lines, Color foreground, Color background)
         {
             int currentY = y;
             foreach (string line in lines)
@@ -162,7 +164,7 @@ namespace MelonUI.Base
         }
 
         // Write multiple lines centered
-        public void WriteLinesCentered(int startY, IEnumerable<string> lines, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public void WriteLinesCentered(int startY, IEnumerable<string> lines, Color foreground, Color background)
         {
             int currentY = startY;
             foreach (string line in lines)
@@ -188,7 +190,7 @@ namespace MelonUI.Base
                         var sourcePixel = source.Buffer[sy, sx];
 
                         // If respectBackground is false, only copy if the source pixel isn't the default background
-                        if (respectBackground || sourcePixel.Background != ConsoleColor.Black)
+                        if (respectBackground || sourcePixel.Background != Color.Black)
                         {
                             Buffer[targetY, targetX] = sourcePixel;
                         }
@@ -198,7 +200,7 @@ namespace MelonUI.Base
         }
 
         // Write a framed string (with optional border)
-        public void WriteFrame(int x, int y, string text, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black, bool border = true)
+        public void WriteFrame(int x, int y, string text, Color foreground, Color background, bool border = true)
         {
             if (border)
             {
@@ -223,7 +225,7 @@ namespace MelonUI.Base
         }
 
         // Fill a rectangle with a character
-        public void FillRect(int x, int y, int width, int height, char c, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public void FillRect(int x, int y, int width, int height, char c, Color foreground, Color background)
         {
             for (int cy = y; cy < y + height && cy < Height; cy++)
             {
@@ -238,7 +240,7 @@ namespace MelonUI.Base
         }
 
         // Draw a rectangle border
-        public void DrawRect(int x, int y, int width, int height, ConsoleColor foreground = ConsoleColor.White, ConsoleColor background = ConsoleColor.Black)
+        public void DrawRect(int x, int y, int width, int height, Color foreground, Color background)
         {
             // Draw corners
             SetPixel(x, y, '┌', foreground, background);
@@ -280,63 +282,50 @@ namespace MelonUI.Base
             return sub;
         }
 
-        public void RenderToConsole()
+        public void RenderToConsole(StreamWriter output)
         {
             try
             {
-                int consoleWidth = Console.WindowWidth;
-                int consoleHeight = Console.WindowHeight;
-
-                if (Width != consoleWidth || Height != consoleHeight)
+                // Since we're writing to a stream, we don't need console dimensions
+                if (Width <= 0 || Height <= 0)
                 {
-                    Resize(consoleWidth, consoleHeight);
+                    return;
                 }
 
-                Console.SetCursorPosition(0, 0);
-                ConsoleColor currentFg = ConsoleColor.White;
-                ConsoleColor currentBg = ConsoleColor.Black;
-                int bufferIndex = 0;
+                Color currentFg = Color.White;
+                Color currentBg = Color.Black;
 
-                for (int y = 0; y < Height; y++)
+                for (int y = 0; y < Height - 1; y++)
                 {
+                    StringBuilder lineBuilder = new StringBuilder();
+
                     for (int x = 0; x < Width; x++)
                     {
                         var pixel = Buffer[y, x];
 
+                        // If colors change, we need to add appropriate markup or formatting
                         if (pixel.Foreground != currentFg || pixel.Background != currentBg)
                         {
-                            if (bufferIndex > 0)
-                            {
-                                Console.Write(RenderBuffer, 0, bufferIndex);
-                                bufferIndex = 0;
-                            }
-
                             currentFg = pixel.Foreground;
                             currentBg = pixel.Background;
-                            Console.ForegroundColor = currentFg;
-                            Console.BackgroundColor = currentBg;
                         }
 
-                        RenderBuffer[bufferIndex++] = pixel.Character;
-
-                        if (bufferIndex >= MaxBufferSize || x == Width - 1)
-                        {
-                            Console.Write(RenderBuffer, 0, bufferIndex);
-                            bufferIndex = 0;
-                        }
+                        lineBuilder.Append($"{pixel.Character}".Pastel(currentFg).PastelBg(currentBg));
                     }
-                }
 
-                if (bufferIndex > 0)
-                {
-                    Console.Write(RenderBuffer, 0, bufferIndex);
+                    // Write the complete line and add a newline
+                    output.WriteLine(lineBuilder.ToString());
+
+                    // Ensure the content is written immediately
+                    output.Flush();
                 }
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.BackgroundColor = ConsoleColor.Black;
+                Console.SetCursorPosition(0, 0);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Handle console resize or other console-related exceptions
+                // Consider logging the exception or handling it appropriately
+                output.WriteLine($"Error during rendering: {ex.Message}");
+                output.Flush();
             }
         }
     }

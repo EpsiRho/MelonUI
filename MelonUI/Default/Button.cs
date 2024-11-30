@@ -6,14 +6,13 @@ namespace MelonUI.Default
     public class Button : UIElement
     {
         public string Text { get; set; } = "";
-        public ConsoleColor TextColor { get; set; } = ConsoleColor.White;
         public event Action OnPressed;
-        private readonly ConsoleKey _key;
+        public readonly ConsoleKey _key;
 
         public Button(ConsoleKey key)
         {
             _key = key;
-            ShowBorder = true;
+            ShowBorder = false;
 
             RegisterKeyboardControl(
                 key,
@@ -32,35 +31,25 @@ namespace MelonUI.Default
             int contentHeight = buffer.Height;
 
             // Draw top border with key
-            string keyText = $"[{GetKeyDisplay(_key)}]";
-            int keyStart = (contentWidth - keyText.Length) / 2;
-
-            for (int x = 0; x < contentWidth; x++)
-            {
-                if (x >= keyStart && x < keyStart + keyText.Length)
-                {
-                    // Draw the key display
-                    buffer.SetPixel(x, 0, keyText[x - keyStart], foreground, background);
-                }
-            }
+            string keyText = $"[({GetKeyDisplay(_key)}) {Text}]";
 
             // Draw centered button text
-            int textStart = Math.Max(1, (contentWidth - Text.Length) / 2);
-            for (int i = 0; i < Text.Length && textStart + i < contentWidth - 2; i++)
+            int textStart = Math.Max(1, (contentWidth - keyText.Length) / 2);
+            for (int i = 0; i < keyText.Length && textStart + i < contentWidth - 2; i++)
             {
-                buffer.SetPixel(textStart + i, contentHeight / 2, Text[i], TextColor, background);
+                buffer.SetPixel(textStart + i, contentHeight / 2, keyText[i], foreground, background);
             }
         }
 
-        private string GetKeyDisplay(ConsoleKey key)
+        public static string GetKeyDisplay(ConsoleKey key)
         {
             return key switch
             {
-                ConsoleKey.Spacebar => "Space",
-                ConsoleKey.Enter => "Enter",
+                ConsoleKey.Spacebar => "_",
+                ConsoleKey.Enter => "Etr",
                 ConsoleKey.Escape => "Esc",
                 ConsoleKey.Delete => "Del",
-                ConsoleKey.Backspace => "Back",
+                ConsoleKey.Backspace => "Bck",
                 ConsoleKey.Tab => "Tab",
                 ConsoleKey.UpArrow => "↑",
                 ConsoleKey.DownArrow => "↓",
