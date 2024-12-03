@@ -298,6 +298,10 @@ namespace MelonUI.Managers
             var nextElement = FindNearestElement(FocusedElement, direction);
             if (nextElement != null)
             {
+                Parallel.ForEach(RootElements, (element) =>
+                {
+                    element.NeedsRecalculation = true;
+                });
                 // Unfocus the currently focused element
                 FocusedElement.IsFocused = false;
 

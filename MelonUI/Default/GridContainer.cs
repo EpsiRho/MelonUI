@@ -48,7 +48,6 @@ namespace MelonUI.Default
             _animateExpansion = animateExpansion;
             _currentAnimationStep = animateExpansion ? 1 : AnimationSteps;
             _renderCounter = 0;
-            IsVisible = true;
         }
         public void SetParentWindows(ConsoleWindowManager parent)
         {

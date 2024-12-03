@@ -48,7 +48,7 @@ namespace MelonUI.Base
         protected List<KeyboardControl> KeyboardControls { get; } = new();
 
         // Box drawing configuration
-        public bool ShowBorder { get; set; } = true;
+        public virtual bool ShowBorder { get; set; } = true;
         public virtual Color BorderColor { get; set; } = Color.Gray;
         public virtual Color FocusedBorderColor { get; set; } = Color.Cyan;
         public virtual Color Foreground { get; set; } = Color.White;

@@ -8,6 +8,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="Default\QueueContainer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Pastel" Version="6.0.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.6" />

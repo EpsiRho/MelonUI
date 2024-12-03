@@ -229,7 +229,7 @@ namespace MelonUI.Default
                         Height = "55%",
                         Name = "MPFilePickerGrid"
                     };
-                    FilePicker picker = new FilePicker("D:\\Plex\\Music")
+                    FilePicker picker = new FilePicker(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic))
                     {
                         ShowBorder = false,
                         Name = "MPFilePicker"

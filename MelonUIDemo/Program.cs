@@ -8,116 +8,190 @@ manager.SetTitle("MelonUI V2.0 Demo (b0.2)"); // Set the title
 manager.SetStatus($"Started: {DateTime.Now}"); // Set the status bar
 
 // Menu
-
-
-// b0.1 Demo
-manager.SetTitle("MelonUI V2.0 Demo (b0.1)"); // Set the title
-manager.SetStatus($"Started: {DateTime.Now}"); // Set the status bar
-
-// Music Player
-var mgrid = new GridContainer(1, true, 1) // Create a Grid to put the item in so we can use it's animation model (true)
+OptionsMenu menu = new()
 {
-    X = "60%", // Relative X/Y/Width/Height supported by Percentage
-    Y = "10%",
-    Width = "35%",
-    Height = "40%",
-    Name = "MusicGrid"
-};
-
-MusicPlayerElement mp = new(null) // Takes in a PlaybackManager based class, so you can define an audio manager. I'm using a wrapper for NAudio, Windows Only. 
-{                                 // Here it's null because we haven't preloaded a file. You could open a FilePicker first or open it from the Music Player.
-    ShowBorder = false
-};
-
-mgrid.AddElement(mp, 0, 0); // Add the Music Player to the Grid
-
-// Image
-ConsoleImage img = new ConsoleImage(@"E:\Pictures\Epsi\iconcommission13-2-2019.png", "60%", "99%") // Create an image viewer with x image at 60% w and 90% height.
-{                                                                                                  // Important to note Image dimensions will not be 1:1, i.e 50% 50% or 20 20 will not be a 1:1 ration.
-    X = "0",                                                                                       // This is because Console Pixels are taller than they are wide.
+    X = "0",
     Y = "0",
-    Name = "EpsiPic",
-    UseBg = true
+    Width = "50%",
+    Height = "50%",
+    MenuName = "Default UI Objects",
+    UseStatusBar = true
 };
-img.RegisterKeyboardControl(ConsoleKey.M, () =>
+menu.Options.Add(("Show Music Player", () =>
 {
+    var mgrid = new GridContainer(1, true, 1) // Create a Grid to put the item in so we can use it's animation model (true)
+    {
+        X = "60%", // Relative X/Y/Width/Height supported by Percentage
+        Y = "10%",
+        Width = "35%",
+        Height = "40%",
+        Name = "MusicGrid"
+    };
+
+    MusicPlayerElement mp = new(null) // Takes in a PlaybackManager based class, so you can define an audio manager. I'm using a wrapper for NAudio, Windows Only. 
+    {                                 // Here it's null because we haven't preloaded a file. You could open a FilePicker first or open it from the Music Player.
+        ShowBorder = false
+    };
+
+    mgrid.AddElement(mp, 0, 0); // Add the Music Player to the Grid
     manager.AddElement(mgrid);
-}, "Open Music Player"); // Custom control for M so I can show the music player
-int mode = 0;
-img.RegisterKeyboardControl(ConsoleKey.T, () =>
+}
+));
+menu.Options.Add(("Show Image", () =>
 {
-    switch (mode)
+    // Image
+    ConsoleImage img = new ConsoleImage(@"", "40%", "99%") 
     {
-        case 0:
-            img.UseBg = false;
-            img.UseColor = true;
-            img.InitializeImageAsync();
-            mode++;
-            break;
-        case 1:
-            img.UseBg = false;
-            img.UseColor = false;
-            img.InitializeImageAsync();
-            mode++;
-            break;
-        case 2:
-            img.UseBg = true;
-            img.UseColor = true;
-            img.InitializeImageAsync();
-            mode = 0;
-            break;
-    }
-}, "Open Music Player"); // Custom control for M so I can show the music player
-img.RegisterKeyboardControl(ConsoleKey.O, () =>
-{
-    try
+        X = "60%",
+        Y = "0",
+        Name = "EpsiPic",
+        UseBg = true
+    };
+    int mode = 0;
+    img.RegisterKeyboardControl(ConsoleKey.M, () =>
     {
-        var filepickergrid = new GridContainer(1, true, 1)
+        switch (mode)
         {
-            X = "25%",
-            Y = "25%",
-            Width = "55%",
-            Height = "55%",
-            Name = "MPFilePickerGrid"
-        };
-        FilePicker picker = new FilePicker(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures))
+            case 0:
+                img.UseBg = false;
+                img.UseColor = true;
+                img.InitializeImageAsync();
+                mode++;
+                break;
+            case 1:
+                img.UseBg = false;
+                img.UseColor = false;
+                img.InitializeImageAsync();
+                mode++;
+                break;
+            case 2:
+                img.UseBg = true;
+                img.UseColor = true;
+                img.InitializeImageAsync();
+                mode = 0;
+                break;
+        }
+    }, "Change Diplay Mode");
+    img.RegisterKeyboardControl(ConsoleKey.O, () =>
+    {
+        try
         {
-            ShowBorder = false,
-            Name = "MPFilePicker"
-        };
-        picker.OnFileSelected += () =>
-        {
-            // On file select, close picker
-            filepickergrid.AnimateClose(() =>
+            var filepickergrid = new GridContainer(1, true, 1)
             {
-                // Remove File Picker
-                filepickergrid.RenderThreadDeleteMe = true;
-
-                Task.Run(() =>
+                X = "25%",
+                Y = "25%",
+                Width = "55%",
+                Height = "55%",
+                Name = "MPFilePickerGrid"
+            };
+            FilePicker picker = new FilePicker(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures))
+            {
+                ShowBorder = false,
+                Name = "MPFilePicker"
+            };
+            picker.OnFileSelected += () =>
+            {
+                // On file select, close picker
+                filepickergrid.AnimateClose(() =>
                 {
-                    try
+                    // Remove File Picker
+                    filepickergrid.RenderThreadDeleteMe = true;
+
+                    Task.Run(() =>
                     {
-                        img.Path = picker.Path;
-                    }
-                    catch (Exception ex)
-                    {
-                        img.ParentWindow.SetStatus("File Loading Error!");
-                    }
+                        try
+                        {
+                            img.Path = picker.Path;
+                        }
+                        catch (Exception ex)
+                        {
+                            img.ParentWindow.SetStatus("File Loading Error!");
+                        }
+                    });
                 });
-            });
 
-        };
-        filepickergrid.AddElement(picker, 0, 0);
-        img.ParentWindow.AddElement(filepickergrid, true);
-        picker.Show();
-    }
-    catch (Exception e)
-    {
-        img.ParentWindow.SetStatus("File Picker Error!");
-    }
-}, "Open File"); // When O is hit, add a filepicker and handle file input (done thru defining Actions)
+            };
+            filepickergrid.AddElement(picker, 0, 0);
+            img.ParentWindow.AddElement(filepickergrid, true);
+            picker.Show();
+        }
+        catch (Exception e)
+        {
+            img.ParentWindow.SetStatus("File Picker Error!");
+        }
+    }, "Open File"); // When O is hit, add a filepicker and handle file input (done thru defining Actions)
 
-manager.AddElement(img); // Add the image viewer to the grid
+    manager.AddElement(img); // Add the image viewer to the grid
+}
+));
+
+QueueContainer queue = new QueueContainer()
+{
+    X = "0",
+    Y = "0",
+    Width = "50%",
+    Height = "50%",
+};
+
+OptionsMenu AnimalMenu = new()
+{
+    X = "0",
+    Y = "0",
+    Width = "50%",
+    Height = "50%",
+    MenuName = "Pick an animal"
+};
+AnimalMenu.Options.Add(("Cat", () =>
+{
+    queue.PopElement();
+    manager.SetStatus("Picked Cat!");
+}
+));
+AnimalMenu.Options.Add(("Dog", () =>
+{
+    queue.PopElement();
+    manager.SetStatus("Picked Dog!");
+}
+));
+AnimalMenu.Options.Add(("Bird", () =>
+{
+    queue.PopElement();
+    manager.SetStatus("Picked Bird!");
+}
+));
+AnimalMenu.Options.Add(("Fish", () =>
+{
+    queue.PopElement();
+    manager.SetStatus("Picked Fish!");
+}
+));
+
+OptionsMenu BoolMenu = new()
+{
+    X = "0",
+    Y = "0",
+    Width = "50%",
+    Height = "50%",
+    MenuName = "Do you have a pet?"
+};
+BoolMenu.Options.Add(("Yes", () =>
+{
+    queue.PopElement();
+    manager.SetStatus("Picked Yes");
+}
+));
+BoolMenu.Options.Add(("No", () =>
+{
+    queue.PopElement();
+    manager.SetStatus("Picked No");
+}
+));
+
+queue.AddElement(AnimalMenu);
+queue.AddElement(BoolMenu);
+queue.AddElement(menu);
+
+manager.AddElement(queue);
 
 CancellationToken RenderToken = new CancellationToken(); // Token used to end rendering, if the application desires to do so.
 await manager.ManageConsole(RenderToken); // Otherwise, this will launch Render and Control threads, and hold the main thread so the app doesn't close.
