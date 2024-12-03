@@ -29,6 +29,11 @@ namespace MelonUI.Default
             // Playback
             RegisterKeyboardControl(ConsoleKey.Spacebar, () =>
             {
+                if(playbackManager == null)
+                {
+                    ParentWindow.SetStatus("No audio loaded");
+                    return;
+                }
                 if (!playbackManager.GetPlayState())
                 {
                     try
@@ -38,7 +43,7 @@ namespace MelonUI.Default
                     }
                     catch (Exception e)
                     {
-                        ParentWindow.SetStatus("No audio loaded");
+                        ParentWindow.SetStatus("Playback Error!");
                     }
                 }
                 else
@@ -50,7 +55,7 @@ namespace MelonUI.Default
                     }
                     catch (Exception e)
                     {
-                        ParentWindow.SetStatus("No audio loaded");
+                        ParentWindow.SetStatus("Pause Error!");
                     }
                 }
                 Thread t = new Thread(() =>
@@ -340,8 +345,8 @@ namespace MelonUI.Default
             buffer.WriteString(ActualX, bumpY, playStatus, Foreground, Background);
 
             // Track Info Section
-            string trackName = trackMetadata != null && !String.IsNullOrEmpty(trackMetadata.Title) ? trackMetadata.Title : $"╟Loading...";
-            string artistName = trackMetadata != null && !String.IsNullOrEmpty(trackMetadata.Artist) ? trackMetadata.Artist : $"╟{BoxHorizontal}Loading...";
+            string trackName = trackMetadata != null && !String.IsNullOrEmpty(trackMetadata.Title) ? $"╟{trackMetadata.Title}" : $"╟Loading...";
+            string artistName = trackMetadata != null && !String.IsNullOrEmpty(trackMetadata.Artist) ? $"╟{BoxHorizontal}{trackMetadata.Artist}" : $"╟{BoxHorizontal}Loading...";
             string Line1 = $"╙{BoxHorizontal}{BoxHorizontal}{BoxHorizontal}{BoxHorizontal}{BoxTopRight}";
             string Line2 = $"     ╧";
 

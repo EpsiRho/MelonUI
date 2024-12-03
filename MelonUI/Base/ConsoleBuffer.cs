@@ -37,7 +37,9 @@ namespace MelonUI.Base
 
             for (int y = 0; y < copyHeight; y++)
                 for (int x = 0; x < copyWidth; x++)
+                {
                     newBuffer[y, x] = Buffer[y, x];
+                }
 
             Buffer = newBuffer;
             Width = newWidth;
@@ -46,10 +48,12 @@ namespace MelonUI.Base
 
         public void Clear(Color background)
         {
-            var emptyPixel = new ConsolePixel(' ', Color.White, background);
+            var emptyPixel = new ConsolePixel(' ', Color.White, background, false);
             for (int y = 0; y < Height; y++)
                 for (int x = 0; x < Width; x++)
+                {
                     Buffer[y, x] = emptyPixel;
+                }
         }
 
         public void Write(int x, int y, ConsoleBuffer source)
@@ -72,23 +76,97 @@ namespace MelonUI.Base
         {
             if (x >= 0 && x < Width && y >= 0 && y < Height)
             {
-                Buffer[y, x] = new ConsolePixel(c, foreground, background);
+                int charWidth = GetCharWidth(c);
+                if (charWidth == 2 && x + 1 < Width)
+                {
+                    // Set the wide character
+                    Buffer[y, x] = new ConsolePixel(c, foreground, background, true);
+                    // Set an empty character next to it that will be skipped
+                    Buffer[y, x + 1] = new ConsolePixel(' ', foreground, background, false);
+                }
+                else
+                {
+                    Buffer[y, x] = new ConsolePixel(c, foreground, background, false);
+                }
             }
         }
 
         public static int GetCharWidth(char c)
         {
-            // This range covers most double-width Unicode characters
-            return (c >= '\u1100' && c <= '\u115F') ||  // Hangul
-                   (c >= '\u2E80' && c <= '\u9FFF') ||  // CJK
-                   (c >= '\uAC00' && c <= '\uD7AF') ||  // Hangul syllables
-                   (c >= '\uF900' && c <= '\uFAFF') ||  // CJK Compatibility
-                   (c >= '\uFE10' && c <= '\uFE19') ||  // Vertical forms
-                   (c >= '\uFE30' && c <= '\uFE6F') ||  // CJK Compatibility
-                   (c >= '\uFF00' && c <= '\uFF60') ||  // Fullwidth forms
-                   (c >= '\uFFE0' && c <= '\uFFE6') ||  // Fullwidth symbols
-                   (c == '→' || c == '←' || c == '↑' || c == '↓') // Common arrows
-                ? 2 : 1;
+            // East Asian Width property categories that are considered "wide"
+            // Reference: Unicode Standard Annex #11: East Asian Width
+            // https://www.unicode.org/reports/tr11/
+
+            // Full and Wide ranges (F, W)
+            if ((c >= '\u1100' && c <= '\u115F') ||   // Hangul Jamo
+                (c >= '\u231A' && c <= '\u231B') ||   // Watch, Hourglass
+                (c >= '\u2329' && c <= '\u232A') ||   // Angular Brackets
+                (c >= '\u23E9' && c <= '\u23EC') ||   // Play/Pause Buttons
+                (c >= '\u23F0' && c <= '\u23F3') ||   // Clock Face
+                (c >= '\u25FD' && c <= '\u25FE') ||   // Geometric Shapes
+                (c >= '\u2614' && c <= '\u2615') ||   // Umbrella, Hot Beverage
+                (c >= '\u2648' && c <= '\u2653') ||   // Zodiac Symbols
+                (c >= '\u267F' && c <= '\u2685') ||   // Wheelchair Symbol + Die Faces
+                (c >= '\u2693' && c <= '\u2694') ||   // Anchor, Crossed Swords
+                (c >= '\u26C4' && c <= '\u26C5') ||   // Snowman
+                (c >= '\u26CE' && c <= '\u26CF') ||   // Ophiuchus
+                (c >= '\u26D4' && c <= '\u26E1') ||   // Traffic Symbols
+                (c >= '\u26E3' && c <= '\u26E3') ||   // Heavy Circle
+                (c >= '\u26E8' && c <= '\u26E9') ||   // Black Cross
+                (c >= '\u26EB' && c <= '\u26F1') ||   // Castle
+                (c >= '\u26F4' && c <= '\u26F4') ||   // Ferry
+                (c >= '\u26F6' && c <= '\u26F9') ||   // Park Symbols
+                (c >= '\u26FB' && c <= '\u26FC') ||   // Japanese Bank Symbol
+                (c >= '\u26FE' && c <= '\u26FF') ||   // Cup
+                (c >= '\u2700' && c <= '\u2767') ||   // Dingbats
+                (c >= '\u2794' && c <= '\u27BF') ||   // Arrows and Dingbats
+                (c >= '\u2800' && c <= '\u28FF') ||   // Braille Patterns
+                (c >= '\u2B00' && c <= '\u2B2F') ||   // Arrows
+                (c >= '\u2B45' && c <= '\u2B46') ||   // Arrows
+                (c >= '\u2B4D' && c <= '\u2B4F') ||   // Arrows
+                (c >= '\u2E80' && c <= '\u2E99') ||   // CJK Radicals Supplement
+                (c >= '\u2E9B' && c <= '\u2EF3') ||   // CJK Radicals
+                (c >= '\u2F00' && c <= '\u2FD5') ||   // Kangxi Radicals
+                (c >= '\u2FF0' && c <= '\u2FFB') ||   // Ideographic Description Characters
+                (c >= '\u3000' && c <= '\u303E') ||   // CJK Symbols and Punctuation
+                (c >= '\u3041' && c <= '\u3096') ||   // Hiragana
+                (c >= '\u3099' && c <= '\u30FF') ||   // Kana
+                (c >= '\u3105' && c <= '\u312F') ||   // Bopomofo
+                (c >= '\u3131' && c <= '\u318E') ||   // Hangul Compatibility Jamo
+                (c >= '\u3190' && c <= '\u31E3') ||   // Kanbun
+                (c >= '\u31F0' && c <= '\u321E') ||   // Katakana Phonetic Extensions
+                (c >= '\u3220' && c <= '\u3247') ||   // Enclosed CJK
+                (c >= '\u3250' && c <= '\u4DBF') ||   // CJK Unified Ideographs Extension A
+                (c >= '\u4E00' && c <= '\u9FFF') ||   // CJK Unified Ideographs
+                (c >= '\uA000' && c <= '\uA48C') ||   // Yi Syllables
+                (c >= '\uA490' && c <= '\uA4C6') ||   // Yi Radicals
+                (c >= '\uA960' && c <= '\uA97C') ||   // Hangul Jamo Extended-A
+                (c >= '\uAC00' && c <= '\uD7A3') ||   // Hangul Syllables
+                (c >= '\uF900' && c <= '\uFAFF') ||   // CJK Compatibility Ideographs
+                (c >= '\uFE10' && c <= '\uFE19') ||   // Vertical Forms
+                (c >= '\uFE30' && c <= '\uFE52') ||   // CJK Compatibility Forms
+                (c >= '\uFE54' && c <= '\uFE66') ||   // Small Forms
+                (c >= '\uFE68' && c <= '\uFE6B') ||   // Small Forms
+                (c >= '\uFF01' && c <= '\uFF60') ||   // Fullwidth Forms
+                (c >= '\uFFE0' && c <= '\uFFE6') ||   // Fullwidth Signs
+
+                // Special symbols that are typically rendered wide
+                (c == '→' || c == '←' || c == '↑' || c == '↓' ||
+                 c == '▲' || c == '▼' || c == '◄' || c == '►' ||
+                 c == '◆' || c == '◇' || c == '○' || c == '●' || c == '◐' ||
+                 c == '◑' || c == '◒' || c == '◓' || c == '◔' || c == '◕'))
+            {
+                return 2;
+            }
+
+            // Handle surrogate pairs (for emoji and other characters outside the BMP)
+            if (char.IsSurrogate(c))
+            {
+                return 2;
+            }
+
+            // Default to single width
+            return 1;
         }
 
         public static int GetStringWidth(string str)
@@ -101,7 +179,6 @@ namespace MelonUI.Base
             return width;
         }
 
-        // Modified string writing methods to handle wide characters
         public void WriteString(int x, int y, string text, Color foreground, Color background)
         {
             if (string.IsNullOrEmpty(text)) return;
@@ -111,8 +188,16 @@ namespace MelonUI.Base
             {
                 if (currentX >= Width) break;
 
-                SetPixel(currentX, y, c, foreground, background);
-                currentX += GetCharWidth(c);
+                int charWidth = GetCharWidth(c);
+                if (currentX + charWidth <= Width)
+                {
+                    SetPixel(currentX, y, c, foreground, background);
+                    currentX += charWidth;
+                }
+                else
+                {
+                    break; // Stop if we can't fit the next character
+                }
             }
         }
 
@@ -151,7 +236,7 @@ namespace MelonUI.Base
             int x = Math.Max(0, (Width - textWidth) / 2);
             WriteString(x, y, text, foreground, background);
         }
-        // Write multiple lines of text
+
         public void WriteLines(int x, int y, IEnumerable<string> lines, Color foreground, Color background)
         {
             int currentY = y;
@@ -163,7 +248,6 @@ namespace MelonUI.Base
             }
         }
 
-        // Write multiple lines centered
         public void WriteLinesCentered(int startY, IEnumerable<string> lines, Color foreground, Color background)
         {
             int currentY = startY;
@@ -175,7 +259,6 @@ namespace MelonUI.Base
             }
         }
 
-        // Composite another buffer with transparency
         public void WriteBuffer(int x, int y, ConsoleBuffer source, bool respectBackground = true)
         {
             for (int sy = 0; sy < source.Height; sy++)
@@ -199,7 +282,6 @@ namespace MelonUI.Base
             }
         }
 
-        // Write a framed string (with optional border)
         public void WriteFrame(int x, int y, string text, Color foreground, Color background, bool border = true)
         {
             if (border)
@@ -224,7 +306,6 @@ namespace MelonUI.Base
             WriteString(x + 1, y + 1, text, foreground, background);
         }
 
-        // Fill a rectangle with a character
         public void FillRect(int x, int y, int width, int height, char c, Color foreground, Color background)
         {
             for (int cy = y; cy < y + height && cy < Height; cy++)
@@ -239,7 +320,6 @@ namespace MelonUI.Base
             }
         }
 
-        // Draw a rectangle border
         public void DrawRect(int x, int y, int width, int height, Color foreground, Color background)
         {
             // Draw corners
@@ -263,7 +343,6 @@ namespace MelonUI.Base
             }
         }
 
-        // Create a sub-buffer from a region of this buffer
         public ConsoleBuffer CreateSubBuffer(int x, int y, int width, int height)
         {
             var sub = new ConsoleBuffer(width, height);
@@ -286,45 +365,37 @@ namespace MelonUI.Base
         {
             try
             {
-                // Since we're writing to a stream, we don't need console dimensions
-                if (Width <= 0 || Height <= 0)
-                {
-                    return;
-                }
-
-                Color currentFg = Color.White;
-                Color currentBg = Color.Black;
+                if (Width <= 0 || Height <= 0) return;
 
                 for (int y = 0; y < Height - 1; y++)
                 {
                     StringBuilder lineBuilder = new StringBuilder();
+                    bool skipNext = false;
 
                     for (int x = 0; x < Width; x++)
                     {
-                        var pixel = Buffer[y, x];
-
-                        // If colors change, we need to add appropriate markup or formatting
-                        if (pixel.Foreground != currentFg || pixel.Background != currentBg)
+                        if (skipNext)
                         {
-                            currentFg = pixel.Foreground;
-                            currentBg = pixel.Background;
+                            skipNext = false;
+                            continue;
                         }
 
-                        lineBuilder.Append($"{pixel.Character}".Pastel(currentFg).PastelBg(currentBg));
+                        var pixel = Buffer[y, x];
+                        lineBuilder.Append($"{pixel.Character}".Pastel(pixel.Foreground).PastelBg(pixel.Background));
+
+                        if (pixel.IsWide)
+                        {
+                            skipNext = true;
+                        }
                     }
 
-                    // Write the complete line and add a newline
                     output.WriteLine(lineBuilder.ToString());
-
-                    // Ensure the content is written immediately
                     output.Flush();
                 }
                 Console.SetCursorPosition(0, 0);
             }
             catch (Exception ex)
             {
-                // Consider logging the exception or handling it appropriately
-                output.WriteLine($"Error during rendering: {ex.Message}");
                 output.Flush();
             }
         }

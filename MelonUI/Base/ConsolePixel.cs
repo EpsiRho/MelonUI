@@ -12,12 +12,14 @@ namespace MelonUI.Base
         public char Character;
         public Color Foreground;
         public Color Background;
+        public bool IsWide;
 
-        public ConsolePixel(char character, Color foreground, Color background)
+        public ConsolePixel(char character, Color foreground, Color background, bool isWide)
         {
             Character = character;
             Foreground = foreground;
             Background = background;
+            IsWide = isWide;
         }
     }
 }

@@ -4,140 +4,277 @@ using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace MelonUI.Default
 {
     public class ConsoleImage : UIElement
     {
-        public string _path;
+        private string _path;
         public string Path
         {
-            get
-            {
-                return _path;
-            }
+            get => _path;
             set
             {
                 if (value != _path)
                 {
                     _path = value;
-                    ReadImageToPixelBuffer();
+                    _ = InitializeImageAsync();
                 }
             }
         }
-        public Image<Rgba32> image { get; set; }
-        public ConsolePixel[,] CurrentBuffer { get; set; }
-        public static string AsciiTable = " .'^\":;li!I-~+?][}{1)(\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
-        private int lastWidth { get; set; }
-        private int lastHeight { get; set; }
+
+        private Image<Rgba32> image;
+        private Dictionary<int, ConsolePixel[,]> frameCache;
+        private List<int> frameDelays;
+        private readonly Stopwatch timeKeeper;
+        private int currentFrameIndex;
+        private int totalFrames;
+        private bool isGif;
+        private bool renderLock;
+        private int lastWidth;
+        private int lastHeight;
+        private long lastFrameTime;
+        public int MAX_CACHED_FRAMES = 30;
+        public int FRAME_SKIP_THRESHOLD_MS = 100;
+        private readonly object cacheLock = new object();
+        private Task initializationTask;
+        private byte[] imageBuffer;
+        private string loadingMessage = "Loading File";
+
+        public static readonly string AsciiTable = " .'^\":;li!I-~+?][}{1)(\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$";
         public bool UseBg { get; set; } = true;
+        public bool UseColor { get; set; } = true;
+
         public ConsoleImage(string path, string width, string height)
         {
-            Path = path;
             Width = width;
             Height = height;
-            ReadImageToPixelBuffer();
+            frameCache = new Dictionary<int, ConsolePixel[,]>();
+            frameDelays = new List<int>();
+            timeKeeper = new Stopwatch();
+            Path = path;
         }
 
-        public void ReadImageToPixelBuffer()
+        public async Task InitializeImageAsync()
         {
-            if(ActualHeight == 0 || ActualWidth == 0)
-            {
-                return;
-            }
-            CurrentBuffer = new ConsolePixel[ActualWidth, ActualHeight];
-            image = Image.Load<Rgba32>(Path);
+            renderLock = true;
+            loadingMessage = "Reading File...";
 
-            image.Mutate(x => x
-                 .Resize(ActualWidth, ActualHeight));
-
-            image.ProcessPixelRows(accessor =>
+            try
             {
-                for (int y = 0; y < accessor.Height; y++)
+                if (ActualHeight == 0 || ActualWidth == 0)
+                    return;
+
+                // Load file into memory buffer asynchronously
+                imageBuffer = await File.ReadAllBytesAsync(Path);
+                loadingMessage = "Processing Image...";
+
+                // Process image in background
+                initializationTask = Task.Run(() =>
                 {
-                    Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
+                    image?.Dispose();
+                    image = Image.Load<Rgba32>(imageBuffer);
 
-                    for (int x = 0; x < pixelRow.Length; x++)
+                    if (!UseColor)
+                        image.Mutate(x => x.Grayscale());
+
+                    image.Mutate(x => x.Resize(ActualWidth, ActualHeight));
+
+                    isGif = image.Frames.Count > 1;
+                    totalFrames = image.Frames.Count;
+                    frameDelays.Clear();
+                    frameCache.Clear();
+                    currentFrameIndex = 0;
+                    lastFrameTime = 0;
+
+                    if (isGif)
                     {
-                        Rgba32 pixel = pixelRow[x];
-                        double brightness = CalculateBrightnessPercentage(pixel.R, pixel.G, pixel.B, pixel.A);
-                        char c = GetPixelChar(brightness);
-                        CurrentBuffer[x, y] = new ConsolePixel(c, System.Drawing.Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B), System.Drawing.Color.FromArgb(pixel.A - 125 > 0 ? pixel.A - 125 : 1, pixel.R, pixel.G, pixel.B));
+                        foreach (var frame in image.Frames)
+                        {
+                            if (frame.Metadata.TryGetGifMetadata(out var gifMeta))
+                                frameDelays.Add(gifMeta.FrameDelay * 10);
+                        }
                     }
-                }
-            });
+
+                    loadingMessage = "Preloading Frame 1...";
+                    LoadFrame(0);
+                    timeKeeper.Restart();
+
+                    // Clear the buffer after processing
+                    imageBuffer = null;
+                });
+
+                await initializationTask;
+            }
+            catch (Exception ex)
+            {
+                loadingMessage = $"Error: {ex.Message}";
+            }
+            finally
+            {
+                renderLock = false;
+            }
         }
-        public static double CalculateBrightnessPercentage(byte red, byte green, byte blue, byte alpha)
+
+        private void LoadFrame(int frameIndex)
         {
-            // Calculate perceived brightness
-            double brightness = 0.299 * red + 0.587 * green + 0.114 * blue;
+            lock (cacheLock)
+            {
+                if (frameCache.ContainsKey(frameIndex))
+                    return;
 
-            // Adjust brightness by alpha (optional, normalize alpha to [0, 1])
-            double normalizedAlpha = alpha / 255.0;
-            brightness *= normalizedAlpha;
+                var frameBuffer = new ConsolePixel[ActualWidth, ActualHeight];
+                var frame = image.Frames[frameIndex];
 
-            // Normalize brightness to the range [0, 1]
-            return brightness / 255.0;
+                frame.ProcessPixelRows(accessor =>
+                {
+                    for (int y = 0; y < accessor.Height; y++)
+                    {
+                        Span<Rgba32> pixelRow = accessor.GetRowSpan(y);
+                        for (int x = 0; x < pixelRow.Length; x++)
+                        {
+                            Rgba32 pixel = pixelRow[x];
+                            double brightness = CalculateBrightnessPercentage(pixel.R, pixel.G, pixel.B, pixel.A);
+                            char c = GetPixelChar(brightness);
+                            frameBuffer[x, y] = new ConsolePixel(c,
+                                System.Drawing.Color.FromArgb(pixel.A, pixel.R, pixel.G, pixel.B),
+                                System.Drawing.Color.FromArgb(pixel.A - 125 > 0 ? pixel.A - 125 : 1, pixel.R, pixel.G, pixel.B),
+                                false);
+                        }
+                    }
+                });
+
+                frameCache[frameIndex] = frameBuffer;
+                CleanupOldFrames();
+            }
+        }
+
+        private void CleanupOldFrames()
+        {
+            if (frameCache.Count <= MAX_CACHED_FRAMES)
+                return;
+
+            var keysToRemove = new List<int>();
+            int currentFrame = currentFrameIndex;
+
+            foreach (var key in frameCache.Keys)
+            {
+                int distance = Math.Min(
+                    Math.Abs(key - currentFrame),
+                    Math.Abs(key - currentFrame + totalFrames)
+                );
+
+                if (distance > MAX_CACHED_FRAMES / 2)
+                {
+                    keysToRemove.Add(key);
+                }
+            }
+
+            foreach (var key in keysToRemove)
+            {
+                frameCache.Remove(key);
+            }
         }
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
-            if (CurrentBuffer == null || CurrentBuffer.Length == 0)
+            if (renderLock)
             {
-                ReadImageToPixelBuffer();
-                NeedsRecalculation = true;
+                buffer.WriteStringCentered(2, loadingMessage, Foreground, Background);
                 return;
             }
 
-            if (lastHeight != ActualHeight || lastWidth != ActualWidth)
+            if (image == null || lastHeight != ActualHeight || lastWidth != ActualWidth)
             {
-                ReadImageToPixelBuffer();
+                _ = InitializeImageAsync();
                 NeedsRecalculation = true;
                 lastWidth = ActualWidth;
                 lastHeight = ActualHeight;
+                return;
             }
 
-            int xMax = CurrentBuffer.GetLength(0);
-            int yMax = CurrentBuffer.GetLength(1);
-            int xStart = 0;
-            int yStart = 0;
-
-            if (ShowBorder)
+            if (isGif)
             {
-                xStart = 1;
-                yStart = 1;
+                UpdateGifFrame();
             }
 
-            for (int y = 0 + xStart; y < yMax - 1; y++)
+            RenderFrame(buffer);
+
+            // Preload next frame
+            if (isGif)
             {
-                for (int x = 0 + yStart; x < xMax - 1; x++)
+                int nextFrame = (currentFrameIndex + 1) % totalFrames;
+                Task.Run(() => LoadFrame(nextFrame));
+            }
+        }
+
+        private void UpdateGifFrame()
+        {
+            long elapsedTime = timeKeeper.ElapsedMilliseconds;
+
+            if (elapsedTime - lastFrameTime >= frameDelays[currentFrameIndex])
+            {
+                long totalElapsed = elapsedTime - lastFrameTime;
+                int framesToSkip = 0;
+
+                if (totalElapsed > FRAME_SKIP_THRESHOLD_MS)
                 {
-                    if (UseBg)
-                    {
-                        buffer.SetPixel(x, y, CurrentBuffer[x, y].Character, CurrentBuffer[x, y].Foreground, CurrentBuffer[x, y].Background);
-                    }
-                    else
-                    {
-                        buffer.SetPixel(x, y, CurrentBuffer[x, y].Character, CurrentBuffer[x, y].Foreground, Background);
-                    }
+                    framesToSkip = (int)(totalElapsed / frameDelays[currentFrameIndex]);
+                }
+
+                currentFrameIndex = (currentFrameIndex + 1 + framesToSkip) % totalFrames;
+                lastFrameTime = elapsedTime;
+            }
+        }
+
+        private void RenderFrame(ConsoleBuffer buffer)
+        {
+            ConsolePixel[,] currentFrame;
+            lock (cacheLock)
+            {
+                if (!frameCache.TryGetValue(currentFrameIndex, out currentFrame))
+                {
+                    LoadFrame(currentFrameIndex);
+                    if (!frameCache.TryGetValue(currentFrameIndex, out currentFrame))
+                        return;
+                }
+            }
+
+            int xStart = ShowBorder ? 1 : 0;
+            int yStart = ShowBorder ? 1 : 0;
+
+            for (int y = yStart; y < ActualHeight - 1; y++)
+            {
+                for (int x = xStart; x < ActualWidth - 1; x++)
+                {
+                    var pixel = currentFrame[x, y];
+                    buffer.SetPixel(x, y, pixel.Character,
+                        pixel.Foreground,
+                        UseBg ? pixel.Background : Background);
                 }
             }
         }
-        public char GetPixelChar(double percentage)
+
+        private static double CalculateBrightnessPercentage(byte red, byte green, byte blue, byte alpha)
         {
-            int index = (int)Math.Floor(AsciiTable.Length * percentage);
+            double brightness = (0.299 * red + 0.587 * green + 0.114 * blue) * (alpha / 255.0);
+            return brightness / 255.0;
+        }
 
-            if (index >= AsciiTable.Length)
-            {
-                index = AsciiTable.Length - 1;
-            }
+        private char GetPixelChar(double percentage)
+        {
+            int index = Math.Min((int)(AsciiTable.Length * percentage), AsciiTable.Length - 1);
+            return AsciiTable[index];
+        }
 
-            char character = AsciiTable[index];
-            return character;
+        public void Dispose()
+        {
+            image?.Dispose();
+            imageBuffer = null;
         }
     }
 }

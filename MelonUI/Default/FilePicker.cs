@@ -91,7 +91,7 @@ namespace MelonUI.Components
             };
             ctl.Action = () =>
             {
-                var item = _entries.FirstOrDefault(x => x.Name.StartsWith(GetKeyDisplay(ctl.Key.Value)));
+                var item = _entries.FirstOrDefault(x => x.Name.ToUpper().StartsWith(GetKeyDisplay(ctl.Key.Value)));
                 var curItem = _entries[_currentIndex];
                 if (item != null)
                 {

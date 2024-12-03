@@ -3,6 +3,14 @@ using MelonUI.Default;
 using MelonUI.Managers;
 
 var manager = new ConsoleWindowManager(); // Create a new window manager
+// b0.2 Demo
+manager.SetTitle("MelonUI V2.0 Demo (b0.2)"); // Set the title
+manager.SetStatus($"Started: {DateTime.Now}"); // Set the status bar
+
+// Menu
+
+
+// b0.1 Demo
 manager.SetTitle("MelonUI V2.0 Demo (b0.1)"); // Set the title
 manager.SetStatus($"Started: {DateTime.Now}"); // Set the status bar
 
@@ -24,15 +32,41 @@ MusicPlayerElement mp = new(null) // Takes in a PlaybackManager based class, so 
 mgrid.AddElement(mp, 0, 0); // Add the Music Player to the Grid
 
 // Image
-ConsoleImage img = new ConsoleImage(@"E:\Pictures\Epsi\iconcommission13-2-2019.png", "60%", "90%") // Create an image viewer with x image at 60% w and 90% height.
+ConsoleImage img = new ConsoleImage(@"E:\Pictures\Epsi\iconcommission13-2-2019.png", "60%", "99%") // Create an image viewer with x image at 60% w and 90% height.
 {                                                                                                  // Important to note Image dimensions will not be 1:1, i.e 50% 50% or 20 20 will not be a 1:1 ration.
     X = "0",                                                                                       // This is because Console Pixels are taller than they are wide.
     Y = "0",
-    Name = "EpsiPic"
+    Name = "EpsiPic",
+    UseBg = true
 };
 img.RegisterKeyboardControl(ConsoleKey.M, () =>
 {
     manager.AddElement(mgrid);
+}, "Open Music Player"); // Custom control for M so I can show the music player
+int mode = 0;
+img.RegisterKeyboardControl(ConsoleKey.T, () =>
+{
+    switch (mode)
+    {
+        case 0:
+            img.UseBg = false;
+            img.UseColor = true;
+            img.InitializeImageAsync();
+            mode++;
+            break;
+        case 1:
+            img.UseBg = false;
+            img.UseColor = false;
+            img.InitializeImageAsync();
+            mode++;
+            break;
+        case 2:
+            img.UseBg = true;
+            img.UseColor = true;
+            img.InitializeImageAsync();
+            mode = 0;
+            break;
+    }
 }, "Open Music Player"); // Custom control for M so I can show the music player
 img.RegisterKeyboardControl(ConsoleKey.O, () =>
 {
@@ -82,6 +116,7 @@ img.RegisterKeyboardControl(ConsoleKey.O, () =>
         img.ParentWindow.SetStatus("File Picker Error!");
     }
 }, "Open File"); // When O is hit, add a filepicker and handle file input (done thru defining Actions)
+
 manager.AddElement(img); // Add the image viewer to the grid
 
 CancellationToken RenderToken = new CancellationToken(); // Token used to end rendering, if the application desires to do so.
