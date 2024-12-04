@@ -22,6 +22,10 @@ namespace MelonUI.Managers
         public string Status = "";
         private bool IsAltHeld = false;
         public int HighestZ = 0;
+        public Color TitleForeground { get; set; } = Color.White;
+        public Color TitleBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
+        public Color StatusForeground { get; set; } = Color.White;
+        public Color StatusBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
         StreamWriter output { get; set; }
 
         public ConsoleWindowManager()
@@ -212,13 +216,13 @@ namespace MelonUI.Managers
                     });
                 }
                 UpdateBufferSize();
-                MainBuffer.Clear(Color.Black);
+                MainBuffer.Clear(Color.FromArgb(0,0,0,0));
 
                 // Draw title and status
                 for (int i = 0; i < Title.Length && i < MainBuffer.Width; i++)
-                    MainBuffer.SetPixel(i, 0, Title[i], Color.White, Color.Black);
+                    MainBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
                 for (int i = 0; i < Status.Length && i < MainBuffer.Width; i++)
-                    MainBuffer.SetPixel(i, 1, Status[i], Color.White, Color.Black);
+                    MainBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
 
                 // Calculate layouts and render elements
                 var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();

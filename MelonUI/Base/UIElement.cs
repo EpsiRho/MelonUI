@@ -52,9 +52,9 @@ namespace MelonUI.Base
         public virtual Color BorderColor { get; set; } = Color.Gray;
         public virtual Color FocusedBorderColor { get; set; } = Color.Cyan;
         public virtual Color Foreground { get; set; } = Color.White;
-        public virtual Color Background { get; set; } = Color.Black;
+        public virtual Color Background { get; set; } = Color.FromArgb(0,0,0,0);
         public virtual Color FocusedForeground { get; set; } = Color.Cyan;
-        public virtual Color FocusedBackground { get; set; } = Color.Black;
+        public virtual Color FocusedBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
 
         // Box drawing characters - can be overridden by derived classes
         protected virtual char BoxTopLeft => '┌';

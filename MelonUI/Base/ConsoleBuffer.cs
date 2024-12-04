@@ -23,7 +23,7 @@ namespace MelonUI.Base
             Height = Math.Max(1, height);
             Buffer = new ConsolePixel[Height, Width];
             RenderBuffer = new char[MaxBufferSize];
-            Clear(Color.Black);
+            Clear(Color.FromArgb(0,0,0,0));
         }
 
         public void Resize(int newWidth, int newHeight)
@@ -273,7 +273,7 @@ namespace MelonUI.Base
                         var sourcePixel = source.Buffer[sy, sx];
 
                         // If respectBackground is false, only copy if the source pixel isn't the default background
-                        if (respectBackground || sourcePixel.Background != Color.Black)
+                        if (respectBackground || sourcePixel.Background != Color.FromArgb(0,0,0,0))
                         {
                             Buffer[targetY, targetX] = sourcePixel;
                         }
@@ -381,7 +381,22 @@ namespace MelonUI.Base
                         }
 
                         var pixel = Buffer[y, x];
-                        lineBuilder.Append($"{pixel.Character}".Pastel(pixel.Foreground).PastelBg(pixel.Background));
+                        if(pixel.Foreground.A == 0 && pixel.Background.A == 0)
+                        {
+                            lineBuilder.Append($"{pixel.Character}");
+                        }
+                        else if(pixel.Foreground.A == 0 && pixel.Background.A != 0)
+                        {
+                            lineBuilder.Append($"{pixel.Character}".PastelBg(pixel.Background));
+                        }
+                        else if(pixel.Foreground.A != 0 && pixel.Background.A == 0)
+                        {
+                            lineBuilder.Append($"{pixel.Character}".Pastel(pixel.Foreground));
+                        }
+                        else if(pixel.Foreground.A != 0 && pixel.Background.A != 0)
+                        {
+                            lineBuilder.Append($"{pixel.Character}".Pastel(pixel.Foreground).PastelBg(pixel.Background));   
+                        }
 
                         if (pixel.IsWide)
                         {

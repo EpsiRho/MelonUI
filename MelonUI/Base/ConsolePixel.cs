@@ -10,8 +10,8 @@ namespace MelonUI.Base
     public struct ConsolePixel
     {
         public char Character;
-        public Color Foreground;
-        public Color Background;
+        public Color Foreground { get; set; } = Color.FromArgb(0, 0, 0, 0);
+        public Color Background { get; set; } = Color.FromArgb(0,0,0,0);
         public bool IsWide;
 
         public ConsolePixel(char character, Color foreground, Color background, bool isWide)

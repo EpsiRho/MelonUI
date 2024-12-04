@@ -140,36 +140,6 @@ namespace MelonUI.Default
             }
         }
 
-        private void RenderOverflowMenu(ConsoleBuffer buffer)
-        {
-            int menuX = ActualWidth - 1; // Render overflow menu on the right edge of the panel
-            int menuY = 1;
-            int maxLines = Math.Min(MaxOverflowMenuLines, overflowButtons.Count);
-            string line = "";
-            int MaxWidth = 0;
-            for (int i = 0; i < maxLines; i++)
-            {
-                var button = overflowButtons[i];
-                string buttonText = $"[({button.Text[0]}) {button.Text}]";
-                MaxWidth = MaxWidth < buttonText.Length ? buttonText.Length : MaxWidth;
-            }
-            for (int i = 0; i < MaxWidth; i++)
-            {
-                line += BoxHorizontal;
-            }
-            string top = $"{BoxTopLeft}{line}{BoxTopRight}";
-            buffer.WriteString(menuX - top.Length, 0, top, Color.White, Color.Black);
-
-            for (int i = 0; i < maxLines; i++)
-            {
-                var button = overflowButtons[i];
-                string buttonText = $"[({button.Text[0]}) {button.Text}]";
-                for (int j = 0; j < buttonText.Length; j++)
-                {
-                    buffer.SetPixel(menuX - buttonText.Length + j, menuY + i, buttonText[j], Foreground, Background);
-                }
-            }
-        }
     }
     public class OverflowMenu : UIElement
     {

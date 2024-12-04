@@ -41,7 +41,7 @@ namespace MelonUI.Default
             }
         }
 
-        public void AddElement(UIElement element)
+        public void QueueElement(UIElement element)
         {
             element.Parent = this;
             element.ParentWindow = this.ParentWindow;
@@ -56,14 +56,28 @@ namespace MelonUI.Default
             }
             NeedsRecalculation = true;
         }
-        public void RemoveElement(UIElement element)
+        public void InsertElementAt(UIElement element, int idx)
         {
-            Children.Remove(element);
+            element.Parent = this;
+            element.ParentWindow = this.ParentWindow;
+            Children.Insert(idx, element);
+
+            foreach (var control in element.GetKeyboardControls())
+            {
+                if(!control.Key.HasValue)
+                {
+                    control.Key = ConsoleKey.None;
+                }
+            }
             NeedsRecalculation = true;
         }
         public void PopElement()
         {
-            Children.RemoveAt(0);
+            RemoveElementAt(0);
+        }
+        public void RemoveElementAt(int idx)
+        {
+            Children.RemoveAt(idx);
             NeedsRecalculation = true;
         }
 

@@ -1,8 +1,22 @@
 ﻿using MelonUI.Components;
 using MelonUI.Default;
 using MelonUI.Managers;
+using MelonUIDemo.Testing;
+using System.Drawing;
 
 var manager = new ConsoleWindowManager(); // Create a new window manager
+
+// Melon OOBE Demo
+manager.SetTitle("TEST");
+
+MelonOOBE OOBE = new MelonOOBE();
+OOBE.ShowOOBE(manager);
+
+CancellationToken RenderToken = new CancellationToken();
+await manager.ManageConsole(RenderToken); 
+
+return;
+
 // b0.2 Demo
 manager.SetTitle("MelonUI V2.0 Demo (b0.2)"); // Set the title
 manager.SetStatus($"Started: {DateTime.Now}"); // Set the status bar
@@ -15,7 +29,8 @@ OptionsMenu menu = new()
     Width = "50%",
     Height = "50%",
     MenuName = "Default UI Objects",
-    UseStatusBar = true
+    UseStatusBar = true,
+    Background = Color.FromArgb(0, 255, 255, 255)
 };
 menu.Options.Add(("Show Music Player", () =>
 {
@@ -25,7 +40,8 @@ menu.Options.Add(("Show Music Player", () =>
         Y = "10%",
         Width = "35%",
         Height = "40%",
-        Name = "MusicGrid"
+        Name = "MusicGrid",
+        Background = Color.FromArgb(0, 255, 255, 255)
     };
 
     MusicPlayerElement mp = new(null) // Takes in a PlaybackManager based class, so you can define an audio manager. I'm using a wrapper for NAudio, Windows Only. 
@@ -131,6 +147,7 @@ QueueContainer queue = new QueueContainer()
     Y = "0",
     Width = "50%",
     Height = "50%",
+    Background = Color.FromArgb(0, 255, 255, 255)
 };
 
 OptionsMenu AnimalMenu = new()
@@ -139,7 +156,8 @@ OptionsMenu AnimalMenu = new()
     Y = "0",
     Width = "50%",
     Height = "50%",
-    MenuName = "Pick an animal"
+    MenuName = "Pick an animal",
+    Background = Color.FromArgb(0, 0, 0, 0)
 };
 AnimalMenu.Options.Add(("Cat", () =>
 {
@@ -172,7 +190,8 @@ OptionsMenu BoolMenu = new()
     Y = "0",
     Width = "50%",
     Height = "50%",
-    MenuName = "Do you have a pet?"
+    MenuName = "Do you have a pet?",
+    Background = Color.FromArgb(0, 0, 0, 0)
 };
 BoolMenu.Options.Add(("Yes", () =>
 {
@@ -187,11 +206,30 @@ BoolMenu.Options.Add(("No", () =>
 }
 ));
 
-queue.AddElement(AnimalMenu);
-queue.AddElement(BoolMenu);
-queue.AddElement(menu);
+var nameInput = new TextBox()
+{
+    Background = Color.FromArgb(0, 0, 0, 0),
+    FocusedBackground = Color.FromArgb(0, 0, 0, 0),
+    Label="Input a name",
+    HideCharacters = true,
+};
+nameInput.OnEnter += NameInput_OnEnter;
+
+void NameInput_OnEnter(string obj)
+{
+    if (!string.IsNullOrEmpty(obj))
+    {
+        queue.PopElement();
+        manager.SetStatus($"Input: {obj}");
+    }
+}
+
+queue.QueueElement(nameInput);
+queue.QueueElement(AnimalMenu);
+queue.QueueElement(BoolMenu);
+queue.QueueElement(menu);
 
 manager.AddElement(queue);
 
-CancellationToken RenderToken = new CancellationToken(); // Token used to end rendering, if the application desires to do so.
-await manager.ManageConsole(RenderToken); // Otherwise, this will launch Render and Control threads, and hold the main thread so the app doesn't close.
+//CancellationToken RenderToken = new CancellationToken(); // Token used to end rendering, if the application desires to do so.
+//await manager.ManageConsole(RenderToken); // Otherwise, this will launch Render and Control threads, and hold the main thread so the app doesn't close.

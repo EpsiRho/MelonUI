@@ -9,6 +9,7 @@ namespace MelonUI.Base
     public class KeyboardControl
     {
         public ConsoleKey? Key { get; set; }
+        public ConsoleKeyInfo? KeyInfo { get; set; }
         public bool RequireShift { get; set; }
         public bool RequireControl { get; set; }
         public bool RequireAlt { get; set; }
@@ -21,6 +22,7 @@ namespace MelonUI.Base
             if (Wildcard != null) 
             {
                 Key = keyInfo.Key;
+                KeyInfo = keyInfo;
                 var res = Wildcard(keyInfo);
                 return res;
             }
