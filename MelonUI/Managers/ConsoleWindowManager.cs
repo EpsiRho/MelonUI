@@ -17,6 +17,7 @@ namespace MelonUI.Managers
         private List<UIElement> RootElements = new List<UIElement>();
         public UIElement FocusedElement;
         private ConsoleBuffer MainBuffer;
+        public event EventHandler FrameRendered;
         private Dictionary<UIElement, ConsoleBuffer> BufferCache = new();
         public string Title = "";
         public string Status = "";
@@ -290,6 +291,7 @@ namespace MelonUI.Managers
 
                 // Render the main buffer to console
                 MainBuffer.RenderToConsole(output);
+                FrameRendered?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception)
             {

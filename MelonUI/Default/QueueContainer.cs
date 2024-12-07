@@ -135,7 +135,7 @@ namespace MelonUI.Default
             {
                 curElm.Width = innerWidth.ToString();
                 curElm.Height = innerHeight.ToString();
-                curElm.IsFocused = true;
+                curElm.IsFocused = IsFocused;
 
                 curElm.CalculateLayout(0, 0, innerWidth, innerHeight);
                 var elementBuffer = curElm.Render();

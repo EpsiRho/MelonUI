@@ -28,7 +28,13 @@ namespace MelonUI.Components
                 ConsoleKey.UpArrow,
                 () => {
                     if (_currentIndex > 0)
+                    {
                         _currentIndex--;
+                    }
+                    else
+                    {
+                        _currentIndex = Options.Count - 1;
+                    }
                     NeedsRecalculation = true;
                 },
                 $"Scroll Up"
@@ -37,7 +43,13 @@ namespace MelonUI.Components
                 ConsoleKey.DownArrow,
                 () => {
                     if (_currentIndex < Options.Count - 1)
+                    {
                         _currentIndex++;
+                    }
+                    else
+                    {
+                        _currentIndex = 0;
+                    }
                     NeedsRecalculation = true;
                 },
                 $"Scroll Down"
@@ -129,9 +141,9 @@ namespace MelonUI.Components
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
-            int displayableItems = buffer.Height - 2;
             int totalItems = Options.Count;
             int bump = ShowBorder ? 1 : 0;
+            int displayableItems = ShowBorder ? buffer.Height - 4 : buffer.Height - 2;
 
             // Ensure scrolling is within bounds
             if (_currentIndex < _scrollOffset)
