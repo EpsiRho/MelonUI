@@ -9,19 +9,9 @@ var manager = new ConsoleWindowManager(); // Create a new window manager
 // Melon OOBE Demo
 manager.SetTitle("TEST");
 
-MelonOOBE OOBE = new MelonOOBE();
-OOBE.ShowOOBE(manager);
+//MelonOOBE OOBE = new MelonOOBE();
+//OOBE.ShowOOBE(manager);
 
-CancellationToken RenderToken = new CancellationToken();
-await manager.ManageConsole(RenderToken); 
-
-return;
-
-// b0.2 Demo
-manager.SetTitle("MelonUI V2.0 Demo (b0.2)"); // Set the title
-manager.SetStatus($"Started: {DateTime.Now}"); // Set the status bar
-
-// Menu
 OptionsMenu menu = new()
 {
     X = "0",
@@ -36,7 +26,7 @@ menu.Options.Add(("Show Music Player", () =>
 {
     var mgrid = new GridContainer(1, true, 1) // Create a Grid to put the item in so we can use it's animation model (true)
     {
-        X = "60%", // Relative X/Y/Width/Height supported by Percentage
+        X = "60%",
         Y = "10%",
         Width = "35%",
         Height = "40%",
@@ -49,14 +39,14 @@ menu.Options.Add(("Show Music Player", () =>
         ShowBorder = false
     };
 
-    mgrid.AddElement(mp, 0, 0); // Add the Music Player to the Grid
+    mgrid.AddElement(mp, 0, 0);
     manager.AddElement(mgrid);
 }
 ));
 menu.Options.Add(("Show Image", () =>
 {
     // Image
-    ConsoleImage img = new ConsoleImage(@"", "40%", "99%") 
+    ConsoleImage img = new ConsoleImage(@"", "40%", "99%")
     {
         X = "60%",
         Y = "0",
@@ -140,96 +130,22 @@ menu.Options.Add(("Show Image", () =>
     manager.AddElement(img); // Add the image viewer to the grid
 }
 ));
+manager.AddElement(menu, false);
 
-QueueContainer queue = new QueueContainer()
+FPSCounter fps = new FPSCounter()
 {
     X = "0",
-    Y = "0",
-    Width = "50%",
-    Height = "50%",
-    Background = Color.FromArgb(0, 255, 255, 255)
+    Y = "60%",
+    Width = "5",
+    Height = "4",
+    Name = "FPSCounter",
+    FocusedBorderColor = Color.FromArgb(255, 255, 6, 77)
 };
 
-OptionsMenu AnimalMenu = new()
-{
-    X = "0",
-    Y = "0",
-    Width = "50%",
-    Height = "50%",
-    MenuName = "Pick an animal",
-    Background = Color.FromArgb(0, 0, 0, 0)
-};
-AnimalMenu.Options.Add(("Cat", () =>
-{
-    queue.PopElement();
-    manager.SetStatus("Picked Cat!");
-}
-));
-AnimalMenu.Options.Add(("Dog", () =>
-{
-    queue.PopElement();
-    manager.SetStatus("Picked Dog!");
-}
-));
-AnimalMenu.Options.Add(("Bird", () =>
-{
-    queue.PopElement();
-    manager.SetStatus("Picked Bird!");
-}
-));
-AnimalMenu.Options.Add(("Fish", () =>
-{
-    queue.PopElement();
-    manager.SetStatus("Picked Fish!");
-}
-));
+manager.FrameRendered += fps.OnFrameRendered;
+manager.AddElement(fps, false);
 
-OptionsMenu BoolMenu = new()
-{
-    X = "0",
-    Y = "0",
-    Width = "50%",
-    Height = "50%",
-    MenuName = "Do you have a pet?",
-    Background = Color.FromArgb(0, 0, 0, 0)
-};
-BoolMenu.Options.Add(("Yes", () =>
-{
-    queue.PopElement();
-    manager.SetStatus("Picked Yes");
-}
-));
-BoolMenu.Options.Add(("No", () =>
-{
-    queue.PopElement();
-    manager.SetStatus("Picked No");
-}
-));
+CancellationToken RenderToken = new CancellationToken();
+await manager.ManageConsole(RenderToken); 
 
-var nameInput = new TextBox()
-{
-    Background = Color.FromArgb(0, 0, 0, 0),
-    FocusedBackground = Color.FromArgb(0, 0, 0, 0),
-    Label="Input a name",
-    HideCharacters = true,
-};
-nameInput.OnEnter += NameInput_OnEnter;
-
-void NameInput_OnEnter(string obj)
-{
-    if (!string.IsNullOrEmpty(obj))
-    {
-        queue.PopElement();
-        manager.SetStatus($"Input: {obj}");
-    }
-}
-
-queue.QueueElement(nameInput);
-queue.QueueElement(AnimalMenu);
-queue.QueueElement(BoolMenu);
-queue.QueueElement(menu);
-
-manager.AddElement(queue);
-
-//CancellationToken RenderToken = new CancellationToken(); // Token used to end rendering, if the application desires to do so.
-//await manager.ManageConsole(RenderToken); // Otherwise, this will launch Render and Control threads, and hold the main thread so the app doesn't close.
+return;
