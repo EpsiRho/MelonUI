@@ -363,9 +363,11 @@ namespace MelonUI.Base
 
         public void RenderToConsole(StreamWriter output)
         {
+            if (Width <= 0 || Height <= 0) return;
+
             try
             {
-                if (Width <= 0 || Height <= 0) return;
+                StringBuilder screenBuilder = new StringBuilder();
 
                 for (int y = 0; y < Height - 1; y++)
                 {
@@ -381,21 +383,24 @@ namespace MelonUI.Base
                         }
 
                         var pixel = Buffer[y, x];
-                        if(pixel.Foreground.A == 0 && pixel.Background.A == 0)
+                        char ch = pixel.Character;
+
+                        string charStr = ch.ToString();
+
+                        if (pixel.Foreground.A == 0 && pixel.Background.A == 0)
                         {
-                            lineBuilder.Append($"{pixel.Character}");
+                            lineBuilder.Append(charStr);
                         }
-                        else if(pixel.Foreground.A == 0 && pixel.Background.A != 0)
+                        else
                         {
-                            lineBuilder.Append($"{pixel.Character}".PastelBg(pixel.Background));
-                        }
-                        else if(pixel.Foreground.A != 0 && pixel.Background.A == 0)
-                        {
-                            lineBuilder.Append($"{pixel.Character}".Pastel(pixel.Foreground));
-                        }
-                        else if(pixel.Foreground.A != 0 && pixel.Background.A != 0)
-                        {
-                            lineBuilder.Append($"{pixel.Character}".Pastel(pixel.Foreground).PastelBg(pixel.Background));   
+                            string coloredChar = charStr;
+                            if (pixel.Foreground.A != 0)
+                                coloredChar = coloredChar.Pastel(pixel.Foreground);
+
+                            if (pixel.Background.A != 0)
+                                coloredChar = coloredChar.PastelBg(pixel.Background);
+
+                            lineBuilder.Append(coloredChar);
                         }
 
                         if (pixel.IsWide)
@@ -404,15 +409,19 @@ namespace MelonUI.Base
                         }
                     }
 
-                    output.WriteLine(lineBuilder.ToString());
-                    output.Flush();
+                    screenBuilder.AppendLine(lineBuilder.ToString());
                 }
+
+                output.Write(screenBuilder.ToString());
+                output.Flush();
+
                 Console.SetCursorPosition(0, 0);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 output.Flush();
             }
         }
+
     }
 }
