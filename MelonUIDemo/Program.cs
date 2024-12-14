@@ -130,7 +130,7 @@ menu.Options.Add(("Show Image", () =>
     manager.AddElement(img); // Add the image viewer to the grid
 }
 ));
-manager.AddElement(menu, false);
+//manager.AddElement(menu, false);
 
 FPSCounter fps = new FPSCounter()
 {
@@ -141,9 +141,21 @@ FPSCounter fps = new FPSCounter()
     Name = "FPSCounter",
     FocusedBorderColor = Color.FromArgb(255, 255, 6, 77)
 };
+ProgressBar bar = new ProgressBar()
+{
+    X = "0",
+    Y = "0",
+    Width = "50%",
+    Height = "3",
+    Name = "FPSCounter",
+    
+    FocusedBorderColor = Color.FromArgb(255, 255, 6, 77),
+    Style = ProgressBar.ProgressBarStyle.Loading
+};
 
 manager.FrameRendered += fps.OnFrameRendered;
 manager.AddElement(fps, false);
+manager.AddElement(bar, false);
 
 CancellationToken RenderToken = new CancellationToken();
 await manager.ManageConsole(RenderToken); 

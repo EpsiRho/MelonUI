@@ -293,9 +293,9 @@ namespace MelonUI.Managers
                 MainBuffer.RenderToConsole(output);
                 FrameRendered?.Invoke(this, EventArgs.Empty);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-
+                Debug.WriteLine(e.Message);
             }
         }
 
@@ -408,11 +408,8 @@ namespace MelonUI.Managers
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    while (true)
-                    {
-                        HandleInput();
-                        Render();
-                    }
+                    HandleInput();
+                    Render();
                 }
             }
             catch (OperationCanceledException)

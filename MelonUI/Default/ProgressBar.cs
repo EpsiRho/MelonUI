@@ -16,7 +16,7 @@ namespace MelonUI.Default
             get => _progress;
             set => _progress = Math.Clamp(value, 0f, 1f);
         }
-
+        public int LoadingPlace = 0;
         public float? PreviousProgress { get; private set; }
         public DateTime LastUpdate { get; private set; }
 
@@ -59,7 +59,7 @@ namespace MelonUI.Default
         {
             var background = IsFocused ? FocusedBackground : Background;
             int contentWidth = ActualWidth - 1;
-            int contentHeight = ActualHeight - 2;
+            int contentHeight = ShowPercentage ? ActualHeight - 2 : ActualHeight - 1;
 
             // Calculate the animated progress
             float currentProgress = Progress;
@@ -93,7 +93,7 @@ namespace MelonUI.Default
             }
 
             // Calculate progress bar dimensions
-            int barY = contentHeight >= 2 ? 2 : 1;
+            int barY = contentHeight >= 2 && ShowPercentage ? 2 : 1;
             (char full, char empty) = StyleChars[Style];
             int progressWidth = contentWidth - 2; // Leave space for brackets if needed
             int filledWidth = (int)(progressWidth * currentProgress);
@@ -106,6 +106,9 @@ namespace MelonUI.Default
             }
 
             // Draw the progress bar
+            int loadingWidth = 2;
+            int start = LoadingPlace - loadingWidth;
+            int end = LoadingPlace + loadingWidth;
             for (int x = 0; x < progressWidth; x++)
             {
                 int drawX = Style == ProgressBarStyle.Ascii ? x + 2 : x + 1;
@@ -113,8 +116,7 @@ namespace MelonUI.Default
                 if (Style == ProgressBarStyle.Loading)
                 {
                     // Create a sliding animation effect
-                    int offset = (int)((DateTime.Now.Ticks / TimeSpan.TicksPerMillisecond) / 100) % progressWidth;
-                    bool isInLoadingSegment = (x + offset) % progressWidth < filledWidth;
+                    bool isInLoadingSegment = x <= end && x >= start;
                     buffer.SetPixel(drawX, barY,
                         isInLoadingSegment ? full : empty,
                         isInLoadingSegment ? ProgressColor : EmptyColor,
@@ -136,7 +138,23 @@ namespace MelonUI.Default
                 PreviousProgress = Progress;
                 LastUpdate = DateTime.Now;
             }
+
+            if(Style == ProgressBarStyle.Loading)
+            {
+                ShowPercentage = false;
+                Progress += 0.01f;
+                if(Progress >= 0.03f)
+                {
+                    Progress = 0;
+                    LoadingPlace++;
+                }
+                if (LoadingPlace >= progressWidth)
+                {
+                    LoadingPlace = 0;
+                }
+            }
         }
+
 
     }
 }
