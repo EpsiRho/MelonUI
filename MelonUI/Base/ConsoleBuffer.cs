@@ -261,26 +261,39 @@ namespace MelonUI.Base
 
         public void WriteBuffer(int x, int y, ConsoleBuffer source, bool respectBackground = true)
         {
-            for (int sy = 0; sy < source.Height; sy++)
-            {
-                for (int sx = 0; sx < source.Width; sx++)
-                {
-                    int targetX = x + sx;
-                    int targetY = y + sy;
+            int startX = Math.Max(0, x);
+            int startY = Math.Max(0, y);
+            int endX = Math.Min(Width, x + source.Width);
+            int endY = Math.Min(Height, y + source.Height);
 
-                    if (targetX >= 0 && targetX < Width && targetY >= 0 && targetY < Height)
+            if (startX >= endX || startY >= endY) return;
+
+            if (respectBackground) // Direct copy without background checks
+            {
+                for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
+                {
+                    for (int tx = startX, sx = startX - x; tx < endX; tx++, sx++)
+                    {
+                        Buffer[ty, tx] = source.Buffer[sy, sx];
+                    }
+                }
+            }
+            else // Copy only if source pixel background is not fully transparent
+            {
+                for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
+                {
+                    for (int tx = startX, sx = startX - x; tx < endX; tx++, sx++)
                     {
                         var sourcePixel = source.Buffer[sy, sx];
-
-                        // If respectBackground is false, only copy if the source pixel isn't the default background
-                        if (respectBackground || sourcePixel.Background != Color.FromArgb(0,0,0,0))
+                        if (sourcePixel.Background.A != 0)
                         {
-                            Buffer[targetY, targetX] = sourcePixel;
+                            Buffer[ty, tx] = sourcePixel;
                         }
                     }
                 }
             }
         }
+
 
         public void WriteFrame(int x, int y, string text, Color foreground, Color background, bool border = true)
         {
