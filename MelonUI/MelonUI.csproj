@@ -15,6 +15,8 @@
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Pastel" Version="6.0.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.6" />
+    <PackageReference Include="Wcwidth" Version="2.0.0" />
+    <PackageReference Include="Wcwidth.Sources" Version="2.0.0" />
     <PackageReference Include="z440.atl.core" Version="6.8.0" />
   </ItemGroup>
 

@@ -34,8 +34,8 @@ namespace MelonUI.Default
         private bool IsCharactersHidden { get; set; } = false;
         public Color CursorColorForeground { get; set; } = Color.Cyan;
         public Color CursorColorBackground { get; set; } = Color.Gray;
-        public event Action<string> OnTextChanged;
-        public event Action<string> OnEnter;
+        public event Action<string, TextBox> OnTextChanged;
+        public event Action<string, TextBox> OnEnter;
         private int _scrollOffset = 0;
         private const int SCROLL_MARGIN = 2;
 
@@ -43,7 +43,7 @@ namespace MelonUI.Default
         {
             RegisterKeyboardControl(
                 ConsoleKey.Enter,
-                () => { OnEnter?.Invoke(Text); },
+                () => { OnEnter?.Invoke(Text, this); },
                 "Enter"
             );
 
@@ -66,7 +66,7 @@ namespace MelonUI.Default
                     {
                         Text = Text.Remove(CursorPosition - 1, 1);
                         CursorPosition--;
-                        OnTextChanged?.Invoke(Text);
+                        OnTextChanged?.Invoke(Text, this);
                     }
                 },
                 "Delete character back"
@@ -78,7 +78,7 @@ namespace MelonUI.Default
                     if (CursorPosition > 0 && CursorPosition < Text.Length)
                     {
                         Text = Text.Remove(CursorPosition, 1);
-                        OnTextChanged?.Invoke(Text);
+                        OnTextChanged?.Invoke(Text, this);
                     }
                 },
                 "Delete character current"
@@ -97,7 +97,7 @@ namespace MelonUI.Default
 
             var ctl = new KeyboardControl()
             {
-                Description = "Jump to section",
+                Description = "Typing",
                 Wildcard = (keyInfo) =>
                 {
                     if (!char.IsControl(keyInfo.KeyChar))
@@ -111,7 +111,7 @@ namespace MelonUI.Default
             {
                 Text = Text.Insert(CursorPosition, ctl.KeyInfo.Value.KeyChar.ToString());
                 CursorPosition++;
-                OnTextChanged?.Invoke(Text);
+                OnTextChanged?.Invoke(Text, this);
                 NeedsRecalculation = true;
             };
             RegisterKeyboardControl(ctl);
@@ -186,6 +186,11 @@ namespace MelonUI.Default
             {
                 _scrollOffset = Math.Max(0, CursorPosition - SCROLL_MARGIN);
             }
+        }
+        public void Clear()
+        {
+            Text = "";
+            CursorPosition = 0;
         }
 
     }

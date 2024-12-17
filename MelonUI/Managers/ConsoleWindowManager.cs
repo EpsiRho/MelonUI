@@ -404,13 +404,38 @@ namespace MelonUI.Managers
 
         public async Task ManageConsole(CancellationToken cancellationToken)
         {
-            try
+            Thread ControllerThread = new Thread(() =>
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
-                    HandleInput();
-                    Render();
+                    try
+                    {
+                        HandleInput();
+                    }
+                    catch (Exception ex)
+                    {
+                        //TODO: Logging
+                    }
                 }
+            });
+            Thread DisplayThread = new Thread(() =>
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        Render();
+                    }
+                    catch (Exception ex)
+                    {
+                        //TODO: Logging
+                    }
+                }
+            });
+            try
+            {
+                DisplayThread.Start();
+                ControllerThread.Start();
             }
             catch (OperationCanceledException)
             {

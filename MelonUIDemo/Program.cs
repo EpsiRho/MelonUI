@@ -3,14 +3,178 @@ using MelonUI.Default;
 using MelonUI.Managers;
 using MelonUIDemo.Testing;
 using System.Drawing;
+using MelonUI.Enums;
+using System.Diagnostics;
+using System.Collections.Concurrent;
 
 var manager = new ConsoleWindowManager(); // Create a new window manager
 
-// Melon OOBE Demo
 manager.SetTitle("TEST");
+
+LockedList<WorkItem> workItems = new LockedList<WorkItem>();
+workItems.Add(new WorkItem("Fetch data", true));
+WorkLog log = new WorkLog(workItems)
+{
+    X = "0",
+    Y = "0",
+    Width = "88%",
+    Height = "98%",
+    ShowProgressBar = true,
+};
+FPSCounter fps = new FPSCounter()
+{
+    X = "90%",
+    Y = "0",
+    Width = "5",
+    Height = "4",
+    Name = "FPSCounter",
+    FocusedBorderColor = Color.FromArgb(255, 255, 6, 77)
+};
+
+manager.FrameRendered += fps.OnFrameRendered;
+
+log.RegisterKeyboardControl(ConsoleKey.NumPad1, () => { log.ShowItemCount = !log.ShowItemCount; }, "ItemCountToggle");
+log.RegisterKeyboardControl(ConsoleKey.NumPad2, () => { log.ShowProgressBar = !log.ShowProgressBar; }, "ProgressBarToggle");
+log.RegisterKeyboardControl(ConsoleKey.NumPad3, () => { log.ShowStatus = !log.ShowStatus; }, "ShowStatusToggle");
+log.RegisterKeyboardControl(ConsoleKey.NumPad4, () => { log.ShowTime = !log.ShowTime; }, "ShowTimeToggle");
+log.RegisterKeyboardControl(ConsoleKey.NumPad5, () => { log.ShowBorder = !log.ShowBorder; }, "ShowBorderToggle");
+
+manager.AddElement(fps);
+manager.AddElement(log);
+
+Console.ReadLine();
 
 //MelonOOBE OOBE = new MelonOOBE();
 //OOBE.ShowOOBE(manager);
+
+CancellationTokenSource RenderSource = new CancellationTokenSource();
+manager.ManageConsole(RenderSource.Token);
+
+Thread.Sleep(2000);
+
+workItems[0].Status = WorkStatus.Completed;
+workItems.Remove(workItems[0]);
+
+var rand = new Random();
+var rand2 = new Random();
+bool stop = false;
+Thread t = new Thread(async () =>
+{
+    while (!RenderSource.Token.IsCancellationRequested)
+    {
+        try
+        {
+            if (stop)
+            {
+                stop = false;
+                return;
+            }
+            int max = workItems.Count > 20 ? 10 : workItems.Count;
+            var temp = workItems.Where(x=>x.Status != WorkStatus.Completed).Take(20);
+            foreach(var item in temp)
+            {
+                if (stop)
+                {
+                    stop = false;
+                    return;
+                }
+                int idx = rand2.Next(0, max);
+                int nextAdd = rand2.Next(0, 20);
+                if (item.Status == WorkStatus.Errored || item.Status == WorkStatus.Completed || nextAdd == 0)
+                {
+                    continue;
+                }
+                else if (item.Status == WorkStatus.Running) 
+                {
+                    //var err = rand2.Next(0, 200);
+                    //if (err == 0)
+                    //{
+                    //    int coin = rand2.Next(0, 2);
+                    //    if (coin == 1)
+                    //    {
+                    //        workItems[idx].Status = WorkStatus.Errored;
+                    //    }
+                    //    continue;
+                    //}
+                }
+
+                workItems[workItems.IndexOf(item)].CompletedItems += nextAdd > 10 ? nextAdd : 0;
+
+                if (item.Status == WorkStatus.Completed)
+                {
+                    //Thread.Sleep(50);
+                    //workItems.Remove(workItems[idx]);
+                }
+                if (item.CompletedItems >= item.TotalItems)
+                {
+                    if (stop)
+                    {
+                        stop = false;
+                        return;
+                    }
+                    workItems[workItems.IndexOf(item)].Status = WorkStatus.Completed;
+                    workItems[workItems.IndexOf(item)].CompletedItems = workItems[workItems.IndexOf(item)].TotalItems;
+                } 
+                else if (item.CompletedItems > 0)
+                {
+                    workItems[workItems.IndexOf(item)].Status = WorkStatus.Running;
+                }
+            }
+        }
+        catch (Exception)
+        {
+
+        }
+        Thread.Sleep(rand2.Next(0, 50));
+    }
+    stop = false;
+});
+t.Start();
+
+int count = 0;
+while (count <= 80)
+{
+    int newItemsCount = rand.Next(0, 10);
+    for (int i = 0; i < newItemsCount; i++)
+    {
+        var idx = rand.Next(100000, 1000000);
+        var item = new WorkItem($"Processing {count}", rand.Next(300,1000), false);
+        workItems.Add(item);
+        count++;
+    }
+    Thread.Sleep(600);
+}
+
+
+while(workItems.Where(x=>x.Status == WorkStatus.Completed).Count() != workItems.Count)
+{
+    Thread.Sleep(1000);
+}
+stop = true;
+while (stop)
+{
+    Thread.Sleep(100);
+}
+
+workItems.Clear();
+workItems.Add(new WorkItem("Save to Disk", true));
+workItems.Add(new WorkItem("Upload to DB", false));
+
+Thread.Sleep(600);
+workItems[0].Complete();
+workItems[1].Run();
+
+Thread.Sleep(2000);
+workItems[1].Complete();
+Thread.Sleep(1000);
+
+RenderSource.Cancel();
+
+while (!RenderSource.Token.IsCancellationRequested)
+{
+    Thread.Sleep(16);
+}
+return;
 
 OptionsMenu menu = new()
 {
@@ -132,15 +296,7 @@ menu.Options.Add(("Show Image", () =>
 ));
 //manager.AddElement(menu, false);
 
-FPSCounter fps = new FPSCounter()
-{
-    X = "0",
-    Y = "60%",
-    Width = "5",
-    Height = "4",
-    Name = "FPSCounter",
-    FocusedBorderColor = Color.FromArgb(255, 255, 6, 77)
-};
+
 ProgressBar bar = new ProgressBar()
 {
     X = "0",
@@ -153,11 +309,10 @@ ProgressBar bar = new ProgressBar()
     Style = ProgressBar.ProgressBarStyle.Loading
 };
 
-manager.FrameRendered += fps.OnFrameRendered;
 manager.AddElement(fps, false);
 manager.AddElement(bar, false);
 
-CancellationToken RenderToken = new CancellationToken();
-await manager.ManageConsole(RenderToken); 
+CancellationToken rrruh = new CancellationToken();
+await manager.ManageConsole(rrruh); 
 
 return;

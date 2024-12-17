@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Wcwidth;
 
 namespace MelonUI.Base
 {
@@ -93,80 +94,8 @@ namespace MelonUI.Base
 
         public static int GetCharWidth(char c)
         {
-            // East Asian Width property categories that are considered "wide"
-            // Reference: Unicode Standard Annex #11: East Asian Width
-            // https://www.unicode.org/reports/tr11/
-
-            // Full and Wide ranges (F, W)
-            if ((c >= '\u1100' && c <= '\u115F') ||   // Hangul Jamo
-                (c >= '\u231A' && c <= '\u231B') ||   // Watch, Hourglass
-                (c >= '\u2329' && c <= '\u232A') ||   // Angular Brackets
-                (c >= '\u23E9' && c <= '\u23EC') ||   // Play/Pause Buttons
-                (c >= '\u23F0' && c <= '\u23F3') ||   // Clock Face
-                (c >= '\u25FD' && c <= '\u25FE') ||   // Geometric Shapes
-                (c >= '\u2614' && c <= '\u2615') ||   // Umbrella, Hot Beverage
-                (c >= '\u2648' && c <= '\u2653') ||   // Zodiac Symbols
-                (c >= '\u267F' && c <= '\u2685') ||   // Wheelchair Symbol + Die Faces
-                (c >= '\u2693' && c <= '\u2694') ||   // Anchor, Crossed Swords
-                (c >= '\u26C4' && c <= '\u26C5') ||   // Snowman
-                (c >= '\u26CE' && c <= '\u26CF') ||   // Ophiuchus
-                (c >= '\u26D4' && c <= '\u26E1') ||   // Traffic Symbols
-                (c >= '\u26E3' && c <= '\u26E3') ||   // Heavy Circle
-                (c >= '\u26E8' && c <= '\u26E9') ||   // Black Cross
-                (c >= '\u26EB' && c <= '\u26F1') ||   // Castle
-                (c >= '\u26F4' && c <= '\u26F4') ||   // Ferry
-                (c >= '\u26F6' && c <= '\u26F9') ||   // Park Symbols
-                (c >= '\u26FB' && c <= '\u26FC') ||   // Japanese Bank Symbol
-                (c >= '\u26FE' && c <= '\u26FF') ||   // Cup
-                (c >= '\u2700' && c <= '\u2767') ||   // Dingbats
-                (c >= '\u2794' && c <= '\u27BF') ||   // Arrows and Dingbats
-                (c >= '\u2800' && c <= '\u28FF') ||   // Braille Patterns
-                (c >= '\u2B00' && c <= '\u2B2F') ||   // Arrows
-                (c >= '\u2B45' && c <= '\u2B46') ||   // Arrows
-                (c >= '\u2B4D' && c <= '\u2B4F') ||   // Arrows
-                (c >= '\u2E80' && c <= '\u2E99') ||   // CJK Radicals Supplement
-                (c >= '\u2E9B' && c <= '\u2EF3') ||   // CJK Radicals
-                (c >= '\u2F00' && c <= '\u2FD5') ||   // Kangxi Radicals
-                (c >= '\u2FF0' && c <= '\u2FFB') ||   // Ideographic Description Characters
-                (c >= '\u3000' && c <= '\u303E') ||   // CJK Symbols and Punctuation
-                (c >= '\u3041' && c <= '\u3096') ||   // Hiragana
-                (c >= '\u3099' && c <= '\u30FF') ||   // Kana
-                (c >= '\u3105' && c <= '\u312F') ||   // Bopomofo
-                (c >= '\u3131' && c <= '\u318E') ||   // Hangul Compatibility Jamo
-                (c >= '\u3190' && c <= '\u31E3') ||   // Kanbun
-                (c >= '\u31F0' && c <= '\u321E') ||   // Katakana Phonetic Extensions
-                (c >= '\u3220' && c <= '\u3247') ||   // Enclosed CJK
-                (c >= '\u3250' && c <= '\u4DBF') ||   // CJK Unified Ideographs Extension A
-                (c >= '\u4E00' && c <= '\u9FFF') ||   // CJK Unified Ideographs
-                (c >= '\uA000' && c <= '\uA48C') ||   // Yi Syllables
-                (c >= '\uA490' && c <= '\uA4C6') ||   // Yi Radicals
-                (c >= '\uA960' && c <= '\uA97C') ||   // Hangul Jamo Extended-A
-                (c >= '\uAC00' && c <= '\uD7A3') ||   // Hangul Syllables
-                (c >= '\uF900' && c <= '\uFAFF') ||   // CJK Compatibility Ideographs
-                (c >= '\uFE10' && c <= '\uFE19') ||   // Vertical Forms
-                (c >= '\uFE30' && c <= '\uFE52') ||   // CJK Compatibility Forms
-                (c >= '\uFE54' && c <= '\uFE66') ||   // Small Forms
-                (c >= '\uFE68' && c <= '\uFE6B') ||   // Small Forms
-                (c >= '\uFF01' && c <= '\uFF60') ||   // Fullwidth Forms
-                (c >= '\uFFE0' && c <= '\uFFE6') ||   // Fullwidth Signs
-
-                // Special symbols that are typically rendered wide
-                (c == '→' || c == '←' || c == '↑' || c == '↓' ||
-                 c == '▲' || c == '▼' || c == '◄' || c == '►' ||
-                 c == '◆' || c == '◇' || c == '○' || c == '●' || c == '◐' ||
-                 c == '◑' || c == '◒' || c == '◓' || c == '◔' || c == '◕'))
-            {
-                return 2;
-            }
-
-            // Handle surrogate pairs (for emoji and other characters outside the BMP)
-            if (char.IsSurrogate(c))
-            {
-                return 2;
-            }
-
-            // Default to single width
-            return 1;
+            var width = UnicodeCalculator.GetWidth(c);
+            return width;
         }
 
         public static int GetStringWidth(string str)

@@ -19,6 +19,7 @@ namespace MelonUI.Default
         public int LoadingPlace = 0;
         public float? PreviousProgress { get; private set; }
         public DateTime LastUpdate { get; private set; }
+        private bool flip = false;
 
         // Customization options
         public string Text { get; set; } = "";
@@ -143,14 +144,18 @@ namespace MelonUI.Default
             {
                 ShowPercentage = false;
                 Progress += 0.01f;
-                if(Progress >= 0.03f)
+                if(Progress >= 0.04f)
                 {
                     Progress = 0;
-                    LoadingPlace++;
+                    LoadingPlace = flip ? LoadingPlace - 1 : LoadingPlace + 1;
                 }
                 if (LoadingPlace >= progressWidth)
                 {
-                    LoadingPlace = 0;
+                    flip = true;
+                }
+                if (LoadingPlace <= 0)
+                {
+                    flip = false;
                 }
             }
         }

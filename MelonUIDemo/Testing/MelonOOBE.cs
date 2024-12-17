@@ -37,7 +37,7 @@ namespace MelonUIDemo.Testing
                 Label = "Enter the URL for your MongoDB",
                 Name = "MongoDBInput",
             };
-            mongoInput.OnEnter += (res) =>
+            mongoInput.OnEnter += (res, source) =>
             {
                 MongoURL = res;
                 queueContainer.PopElement();
@@ -51,7 +51,7 @@ namespace MelonUIDemo.Testing
                 Label = "Enter a name for your admin user",
                 Name = "UsernameInput"
             };
-            usernameInput.OnEnter += (res) =>
+            usernameInput.OnEnter += (res, source) =>
             {
                 Username = res;
                 queueContainer.PopElement();
@@ -66,7 +66,7 @@ namespace MelonUIDemo.Testing
                 Label = "Enter a password (Tab: Show)",
                 Name = "PasswordInput"
             };
-            passwordInput.OnEnter += (res) =>
+            passwordInput.OnEnter += (res, source) =>
             {
                 Password = res;
                 queueContainer.PopElement();
