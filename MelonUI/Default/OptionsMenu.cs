@@ -4,12 +4,18 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using MelonUI.Base;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace MelonUI.Default
 {
-    public class MenuItem
+    public class MenuItem : UIElement
     {
-        public string Option { get; set; }
+        private object _Option;
+        public string Option
+        {
+            get => (string)GetBoundValue(nameof(Text), _Option);
+            set => SetBoundValue(nameof(Text), value, ref _Option);
+        }
         public Action OnSelect { get; set; }
         public MenuItem()
         {
@@ -20,10 +26,20 @@ namespace MelonUI.Default
             Option = option;
             OnSelect = onSelect;
         }
+
+        protected override void RenderContent(ConsoleBuffer buffer)
+        {
+            // Dont
+        }
     }
     public class OptionsMenu : UIElement
     {
-        public List<MenuItem> Options { get; set; }
+        private object _Options;
+        public List<MenuItem> Options
+        {
+            get => (List<MenuItem>)GetBoundValue(nameof(Options), _Options);
+            set => SetBoundValue(nameof(Options), value, ref _Options);
+        }
         public string MenuName { get; set; } = "";
         public bool UseStatusBar { get; set; }
         private int _currentIndex;

@@ -5,7 +5,13 @@ namespace MelonUI.Default
 {
     public class TextBlock : UIElement
     {
-        public string Text { get; set; } = string.Empty;
+        private object _Text;
+        public string Text
+        {
+            get => (string)GetBoundValue(nameof(Text), _Text);
+            set => SetBoundValue(nameof(Text), value, ref _Text);
+        }
+
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
@@ -28,6 +34,10 @@ namespace MelonUI.Default
         private List<string> WrapText(string text, int maxWidth)
         {
             var wrappedLines = new List<string>();
+            if (string.IsNullOrEmpty(Text))
+            {
+                return new List<string>();
+            }
             var paragraphs = text.Split('\n');
 
             foreach (var paragraph in paragraphs)

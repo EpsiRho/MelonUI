@@ -14,6 +14,7 @@ namespace MelonUI.Base
         public virtual bool EnableCaching { get; set; } = true;
         public virtual bool NeedsRecalculation { get; set; } = true;
         public virtual bool RenderThreadDeleteMe { get; set; } = false;
+        protected Dictionary<string, Binding> _bindings = new Dictionary<string, Binding>();
         public string UID { get; set; } = Guid.NewGuid().ToString();
         public string X { get; set; }
         public string Y { get; set; }
@@ -65,6 +66,35 @@ namespace MelonUI.Base
         protected virtual char BoxBottomRight => '┘';
         protected virtual char BoxHorizontal => '─';
         protected virtual char BoxVertical => '│';
+        public void SetBinding(string propertyName, Binding binding)
+        {
+            _bindings[propertyName] = binding;
+            NeedsRecalculation = true;
+        }
+
+        protected object GetBoundValue(string propertyName, object localValue)
+        {
+            if (_bindings.TryGetValue(propertyName, out var binding))
+            {
+                return binding.GetValue();
+            }
+            return localValue;
+        }
+
+        protected void SetBoundValue(string propertyName, object value, ref object localStorage)
+        {
+            if (_bindings.ContainsKey(propertyName))
+            {
+                // Property is bound, update backend property
+                _bindings[propertyName].SetValue(value);
+            }
+            else
+            {
+                // Not bound, store locally
+                localStorage = value;
+            }
+            NeedsRecalculation = true;
+        }
 
         // Base rendering method
         public ConsoleBuffer Render()
@@ -286,5 +316,6 @@ namespace MelonUI.Base
                 }
             }
         }
+
     }
 }

@@ -116,9 +116,12 @@ fileSystemWatcher.Changed += (s, e) =>
     catch (Exception ex) { }
 };
 
+int secs = 0;
 while (true)
 {
-    Thread.Sleep(100);
+    TestPageBackend.Name = $"{secs}s online";
+    Thread.Sleep(1000);
+    secs++;
 }
 
 return;

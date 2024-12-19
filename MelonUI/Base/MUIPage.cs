@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
@@ -13,10 +14,12 @@ namespace MelonUI.Base
     public class MUIPage : UIElement
     {
         public string MXML { get; set; }
-        private List<Assembly> ElementAssemblies = new List<Assembly>() { typeof(UIElement).Assembly };
-        private List<string> ElementNamespaces = new List<string>() { "MelonUI.Default", "MelonUI.Base" };
+        private List<Assembly> Assemblies = new List<Assembly>();
+        private List<string> Namespaces = new List<string>();
         public bool Failed = false;
         public List<string> CompilerMessages = new List<string>();
+        public List<string> Backends = new List<string>();
+        public Dictionary<string, object> BackendObjects = new Dictionary<string, object>();
         public override bool ConsiderForFocus { get; set; } = false;
         private int zCounter = 0;
         public void AddElement(UIElement elm)
@@ -47,13 +50,63 @@ namespace MelonUI.Base
             var pageAttrs = root.Attributes();
             foreach (var attr in pageAttrs)
             {
+                // If special properties are found
                 if (attr.Name.LocalName == "MXMLFlags")
                 {
                     continue;
                 }
+                if (attr.Name.LocalName == "Namespaces") // We are importing a namespace
+                {
+                    string[] split = attr.Value.Split(',');
+                    foreach(var str in split)
+                    {
+                        Namespaces.Add(str);
+                    }
+                    continue;
+                }
+                if (attr.Name.LocalName == "Backends") // Defining a backend
+                {
+                    string[] split = attr.Value.Split(',');
+                    foreach (var str in split)
+                    {
+                        var propType = FindElementType(str);
+                        if(propType == null)
+                        {
+                            Failed = true;
+                            CompilerMessages.Add($"Backend \"{str}\" could not be found!");
+                            return false;
+                        }
+                        try
+                        {
+                            Backends.Add(str);
+                            var item = Activator.CreateInstance(propType);
+                            BackendObjects.TryAdd(str, item);
+                        }
+                        catch (Exception)
+                        {
+
+                        }
+                    }
+                    continue;
+                }
+                if (attr.Name.LocalName == "Assemblies") // Defining an assembly by name
+                {
+                    string[] split = attr.Value.Split(',');
+                    foreach (var str in split)
+                    {
+                        string name = str;
+                        var ass = AppDomain.CurrentDomain.GetAssemblies().
+                                    SingleOrDefault(assembly => assembly.GetName().Name == name);
+                        Assemblies.Add(ass);
+                    }
+                    continue;
+
+                }
+
+                // Else, set normal properties
                 SetProperty(this, attr.Name.LocalName, attr.Value, new Dictionary<string, string>());
             }
-            //var flags = GetFlagsFromElement(root);
+            
 
             // Compile Page
             foreach (var child in root.Elements())
@@ -72,9 +125,9 @@ namespace MelonUI.Base
         private Type FindElementType(string typeName)
         {
             // Looking thru each assembly and namespace to find the element
-            foreach (var asm in ElementAssemblies)
+            foreach (var asm in Assemblies)
             {
-                foreach (var space in ElementNamespaces)
+                foreach (var space in Namespaces)
                 {
                     var t = asm.GetType($"{space}.{typeName}", throwOnError: false, ignoreCase: false);
                     if (t != null)
@@ -85,6 +138,85 @@ namespace MelonUI.Base
             }
 
             return null;
+        }
+        public (object Instance, PropertyInfo Property) FindPropertyReference(string classAndProperty)
+        {
+            if (string.IsNullOrWhiteSpace(classAndProperty))
+            {
+                CompilerMessages.Add($"Property Reference expected, but no name found!");
+                Failed = true;
+                return (null, null);
+            }
+
+            var parts = classAndProperty.Split('.');
+            if (parts.Length != 2)
+            {
+                // Invalid format
+                CompilerMessages.Add($"Property Reference format is invalid, should look like \"ClassName.PropertyName\"");
+                Failed = true;
+                return (null, null);
+            }
+
+            string className = parts[0];
+            string propertyName = parts[1];
+
+            // 1. Try to find a type in the known assemblies and namespaces
+            Type foundType = null;
+            foreach (var asm in Assemblies)
+            {
+                foreach (var space in Namespaces)
+                {
+                    var t = asm.GetType($"{space}.{className}", throwOnError: false, ignoreCase: false);
+                    if (t != null)
+                    {
+                        foundType = t;
+                        break;
+                    }
+                }
+                if (foundType != null) break;
+            }
+
+            if (foundType != null)
+            {
+                // Check if the property is static
+                var staticProp = foundType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+                if (staticProp != null)
+                {
+                    // It's a static property
+                    return (foundType, staticProp);
+                }
+
+                // Not static, so needs an instance. Check BackendObjects for an instance
+                if (BackendObjects.TryGetValue(className, out var backendInstance))
+                {
+                    var instanceProp = backendInstance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                    if (instanceProp != null)
+                    {
+                        return (backendInstance, instanceProp);
+                    }
+                }
+
+                // If we found the type but no suitable instance or property,
+                CompilerMessages.Add($"Property Reference {classAndProperty} found a type, but could not instance or find the property. (Are you using Fields or Properties? Is your Property Public?)");
+                Failed = true;
+                return (null, null);
+            }
+            else
+            {
+                // No type found. Maybe it's only known at runtime via BackendObjects
+                if (BackendObjects.TryGetValue(className, out var backendInstance))
+                {
+                    var instanceProp = backendInstance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                    if (instanceProp != null)
+                    {
+                        return (backendInstance, instanceProp);
+                    }
+                }
+
+                CompilerMessages.Add($"Property Reference {classAndProperty} no type, instance, or property. (Are you using Fields or Properties? Is your Property Public?)");
+                Failed = true;
+                return (null, null);
+            }
         }
         public Dictionary<string, string> GetFlagsFromElement(XElement element)
         {
@@ -421,6 +553,29 @@ namespace MelonUI.Base
             }
 
             // Search backends if string looks like {backendProp}
+            if (value.GetType() == typeof(string))
+            {
+                string name = (string)value;
+                if(name.StartsWith("{") && name.EndsWith("}"))
+                {
+                    name = name.Replace("{", "").Replace("}", "");
+                    var refs = FindPropertyReference(name);
+                    try
+                    {
+                        Binding binding = new Binding(refs.Instance, refs.Property);
+                        if (typeof(UIElement).IsAssignableFrom(element.GetType()))
+                        {
+                            ((UIElement)element).SetBinding(propertyName, binding);
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        Failed = true;
+                        CompilerMessages.Add($"Property Binding could not be found!");
+                    }
+                    return;
+                }
+            }
 
             var propType = prop.PropertyType;
 
@@ -713,6 +868,63 @@ namespace MelonUI.Base
             Failed = true;
             CompilerMessages.Add($"The value \"{value}\" for property type \"{targetType}\" cannot be converted.");
             return value;
+        }
+
+        public Binding CreateBinding(string className, string propertyName)
+        {
+            // 1. Find the type
+            Type foundType = null;
+            foreach (var asm in Assemblies)
+            {
+                foreach (var space in Namespaces)
+                {
+                    var t = asm.GetType($"{space}.{className}", throwOnError: false, ignoreCase: false);
+                    if (t != null)
+                    {
+                        foundType = t;
+                        break;
+                    }
+                }
+                if (foundType != null) break;
+            }
+
+            if (foundType != null)
+            {
+                // Check for a static property
+                var staticProp = foundType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+                if (staticProp != null)
+                {
+                    return new Binding(staticProp);
+                }
+
+                // Not static, need an instance
+                if (BackendObjects.TryGetValue(className, out var backendInstance))
+                {
+                    var instanceProp = backendInstance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                    if (instanceProp != null)
+                    {
+                        return new Binding(backendInstance, instanceProp);
+                    }
+                }
+
+                return null;
+            }
+            else
+            {
+                // No type found. Maybe it's only in BackendObjects
+                if (BackendObjects.TryGetValue(className, out var backendInstance))
+                {
+                    var instanceProp = backendInstance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                    if (instanceProp != null)
+                    {
+                        return new Binding(backendInstance, instanceProp);
+                    }
+
+                    return null;
+                }
+
+                return null;
+            }
         }
 
         protected override void RenderContent(ConsoleBuffer buffer)
