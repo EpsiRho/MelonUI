@@ -58,6 +58,12 @@ namespace MelonUI.Default
             timeKeeper = new Stopwatch();
             Path = path;
         }
+        public ConsoleImage()
+        {
+            frameCache = new Dictionary<int, ConsolePixel[,]>();
+            frameDelays = new List<int>();
+            timeKeeper = new Stopwatch();
+        }
 
         public async Task InitializeImageAsync()
         {

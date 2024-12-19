@@ -5,13 +5,27 @@ using System.IO;
 using System.Linq;
 using MelonUI.Base;
 
-namespace MelonUI.Components
+namespace MelonUI.Default
 {
+    public class MenuItem
+    {
+        public string Option { get; set; }
+        public Action OnSelect { get; set; }
+        public MenuItem()
+        {
+
+        }
+        public MenuItem(string option, Action onSelect)
+        {
+            Option = option;
+            OnSelect = onSelect;
+        }
+    }
     public class OptionsMenu : UIElement
     {
-        public List<(string Option, Action OnSelect)> Options;
-        public string MenuName = "";
-        public bool UseStatusBar;
+        public List<MenuItem> Options { get; set; }
+        public string MenuName { get; set; } = "";
+        public bool UseStatusBar { get; set; }
         private int _currentIndex;
         private int _scrollOffset;
         public Color SelectedForeground { get; set; } = Color.Cyan;
@@ -85,6 +99,10 @@ namespace MelonUI.Components
             ctl.Action = () =>
             {
                 var item = Options.FirstOrDefault(x => x.Option.ToUpper().StartsWith(GetKeyDisplay(ctl.Key.Value)));
+                if(item == null)
+                {
+                    return;
+                }
                 var curItem = Options[_currentIndex];
                 if (item.Option != null)
                 {
@@ -141,6 +159,10 @@ namespace MelonUI.Components
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
+            if (!IsVisible)
+            {
+                return;
+            }
             int totalItems = Options.Count;
             int bump = ShowBorder ? 1 : 0;
             int displayableItems = ShowBorder ? buffer.Height - 4 : buffer.Height - 2;

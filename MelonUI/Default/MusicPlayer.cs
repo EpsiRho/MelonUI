@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Drawing;
 using MelonUI.Base;
-using MelonUI.Components;
 using MelonUI.Managers;
 
 namespace MelonUI.Default

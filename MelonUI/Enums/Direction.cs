@@ -11,6 +11,7 @@ namespace MelonUI.Enums
         Up,
         Down,
         Left,
-        Right
+        Right,
+        Any
     }
 }

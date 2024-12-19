@@ -14,6 +14,7 @@ namespace MelonUI.Base
         public virtual bool EnableCaching { get; set; } = true;
         public virtual bool NeedsRecalculation { get; set; } = true;
         public virtual bool RenderThreadDeleteMe { get; set; } = false;
+        public string UID { get; set; } = Guid.NewGuid().ToString();
         public string X { get; set; }
         public string Y { get; set; }
         public string Width { get; set; }
@@ -24,6 +25,7 @@ namespace MelonUI.Base
         public int ActualWidth { get; protected set; }
         public int ActualHeight { get; protected set; }
         public bool IsFocused { get; set; }
+        public virtual bool ConsiderForFocus { get; set; } = true;
         public bool _IsVisible = true;
         public bool ControlLock { get; set; }
         public bool IsVisible
@@ -70,6 +72,11 @@ namespace MelonUI.Base
             var buffer = new ConsoleBuffer(ActualWidth, ActualHeight);
             var background = IsFocused ? FocusedBackground : Background;
             buffer.Clear(background);
+
+            if (!IsVisible || ActualWidth == 0 || ActualHeight == 0)
+            {
+                return buffer;
+            }
 
             // Draw border if enabled
             if (ShowBorder)

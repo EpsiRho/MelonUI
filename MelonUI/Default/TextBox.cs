@@ -36,6 +36,7 @@ namespace MelonUI.Default
         public Color CursorColorBackground { get; set; } = Color.Gray;
         public event Action<string, TextBox> OnTextChanged;
         public event Action<string, TextBox> OnEnter;
+        public Action EnterHit { get; set; }
         private int _scrollOffset = 0;
         private const int SCROLL_MARGIN = 2;
 
@@ -43,7 +44,7 @@ namespace MelonUI.Default
         {
             RegisterKeyboardControl(
                 ConsoleKey.Enter,
-                () => { OnEnter?.Invoke(Text, this); },
+                () => { OnEnter?.Invoke(Text, this); EnterHit?.Invoke(); },
                 "Enter"
             );
 

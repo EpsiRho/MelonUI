@@ -1,6 +1,7 @@
 ﻿using MelonUI.Base;
 using MelonUI.Default;
 using MelonUI.Enums;
+using SixLabors.ImageSharp.ColorSpaces;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,6 +10,7 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace MelonUI.Managers
 {
@@ -42,7 +44,8 @@ namespace MelonUI.Managers
 
         private UIElement FindNearestElement(UIElement current, Direction direction)
         {
-            if (current == null || RootElements.Count <= 1) return null;
+            var elms = GetAllFocusableChildren(RootElements);
+            if (current == null || elms.Count <= 1) return null;
 
             // Get the center point of the current element
             int currentCenterX = current.ActualX + (current.ActualWidth / 2);
@@ -52,7 +55,7 @@ namespace MelonUI.Managers
             double nearestDistance = double.MaxValue;
             double bestDirectionalDistance = double.MaxValue;
 
-            foreach (var element in RootElements)
+            foreach (var element in elms)
             {
                 if (element == current) continue;
 
@@ -146,7 +149,57 @@ namespace MelonUI.Managers
 
         public void SetTitle(string title) => Title = title;
         public void SetStatus(string status) => Status = status;
+        public List<UIElement> GetAllFocusableChildren(List<UIElement> elms)
+        {
+            List<UIElement> children = new List<UIElement>();
+            foreach(var elm in elms)
+            {
+                if (elm.ConsiderForFocus && elm.IsVisible)
+                {
+                    children.Add(elm);
+                }
+                children.AddRange(GetAllFocusableChildren(elm.Children));
+            }
 
+            return children;
+        }
+        public UIElement GetSubChildByGuid(string uid, List<UIElement> elms = null)
+        {
+            if(elms == null)
+            {
+                elms = RootElements;
+            }
+            foreach (var elm in elms)
+            {
+                if (elm.UID == uid)
+                {
+                    return elm;
+                }
+                var check = GetSubChildByGuid(uid, elm.Children);
+                if (check != null)
+                {
+                    return check;
+                }
+            }
+
+            return null;
+        }
+        public void SetSubZByGuid(int z, string uid, List<UIElement> elms = null)
+        {
+            if(elms == null)
+            {
+                elms = RootElements;
+            }
+            foreach (var elm in elms)
+            {
+                if (elm.UID == uid)
+                {
+                    elm.Z = z;
+                    return;
+                }
+                SetSubZByGuid(z, uid, elm.Children);
+            }
+        }
         public void AddElement(UIElement element, bool forceFocus = true)
         {
             element.ParentWindow = this;
@@ -156,13 +209,52 @@ namespace MelonUI.Managers
                 element.IsFocused = true;
             }
 
-            if (forceFocus)
+            var focuselms = GetAllFocusableChildren(RootElements);
+            if (element.GetType() == typeof(MUIPage) && forceFocus)
+            {
+                
+                int count = 0;
+                focuselms.AddRange(GetAllFocusableChildren(element.Children));
+                foreach (var elm in focuselms.OrderBy(x => x.Z))
+                {
+                    var focusedItem = GetSubChildByGuid(elm.UID, RootElements);
+                    if(focusedItem == null)
+                    {
+                        focusedItem = GetSubChildByGuid(elm.UID, element.Children);
+                        if(focusedItem == null)
+                        {
+                            continue;
+                        }
+                    }
+                    focusedItem.Z = count;
+                    count++;
+                }
+                element.Z = count;
+                FocusedElement.IsFocused = false;
+                FocusedElement = GetSubChildByGuid(focuselms.OrderByDescending(x => x.Z).FirstOrDefault().UID, element.Children);
+                if(FocusedElement == null)
+                {
+                    return;
+                }
+                FocusedElement.IsFocused = true;
+                Parallel.ForEach(focuselms, (element) =>
+                {
+                    element.NeedsRecalculation = true;
+                });
+                RootElements.Add(element);
+                if (HighestZ < element.Z)
+                {
+                    HighestZ = focuselms.Count;
+                }
+                return;
+            }
+            else if (forceFocus)
             {
                 FocusedElement.IsFocused = false;
                 FocusedElement = element;
                 element.IsFocused = true;
                 int count = 0;
-                foreach (var elm in RootElements.OrderBy(x => x.Z))
+                foreach (var elm in focuselms.OrderBy(x => x.Z))
                 {
                     elm.Z = count;
                     count++;
@@ -179,9 +271,12 @@ namespace MelonUI.Managers
         public void RemoveElement(UIElement element)
         {
             int idx = RootElements.IndexOf(element);
+            if(idx == -1)
+            {
+                return;
+            }
             RootElements.RemoveAt(idx);
-
-            if (FocusedElement.Equals(element) && RootElements.Count() >= 1)
+            if (FocusedElement != null && FocusedElement.Equals(element) && RootElements.Count() >= 1)
             {
                 FocusedElement = RootElements.OrderByDescending(x=>x.Z).FirstOrDefault();
                 FocusedElement.IsFocused = true;
@@ -299,56 +394,56 @@ namespace MelonUI.Managers
             }
         }
 
-        private void MoveFocus(Direction direction)
+        public void MoveFocus(UIElement elm)
         {
-            var nextElement = FindNearestElement(FocusedElement, direction);
-            if (nextElement != null)
+            if (elm != null)
             {
-                Parallel.ForEach(RootElements, (element) =>
-                {
-                    element.NeedsRecalculation = true;
-                });
-                // Unfocus the currently focused element
-                FocusedElement.IsFocused = false;
-
-                // Update Z-index for all elements
-                nextElement.Z = HighestZ + 1;
+                var elms = GetAllFocusableChildren(RootElements).OrderBy(x => x.Z).ToList();
                 int count = 0;
-                foreach (var elm in RootElements.OrderBy(x => x.Z))
+
+                var focusedItem = GetSubChildByGuid(elm.UID, RootElements);
+                if(focusedItem == null)
                 {
-                    elm.Z = count;
+                    return;
+                }
+                focusedItem.Z = HighestZ + 1;
+                foreach (var e in elms.OrderBy(x => x.Z))
+                {
+                    //var child = GetSubChildByGuid(RootElements, elm.UID);
+                    //if (child == null)
+                    //{
+                    //    return;
+                    //}
+                   // child.Z = count;
+                    SetSubZByGuid(count, e.UID);
                     count++;
                 }
-
-                // Focus the new element
-                FocusedElement = nextElement;
+                FocusedElement.IsFocused = false;
+                FocusedElement = focusedItem;
                 FocusedElement.IsFocused = true;
 
-                // Assign the highest Z-index to the newly focused element
-                //FocusedElement.Z = HighestZ;
-
-                // Normalize Z-indexes to prevent gaps or inconsistencies
-                //NormalizeZIndexes();
-
-                // Update status to show the current selection
-                SetStatus($"Selected: {FocusedElement.GetType().Name} at {FocusedElement.ActualX},{FocusedElement.ActualY}");
             }
         }
-        private void NormalizeZIndexes()
+        public void MoveFocus(Direction direction)
         {
-            // Sort elements by their current Z-index
-            var sortedElements = RootElements.OrderBy(e => e.Z).ToList();
-
-            // Assign sequential Z-index values
-            for (int i = 0; i < sortedElements.Count; i++)
+            if(direction == Direction.Any)
             {
-                sortedElements[i].Z = i + 1;
+                var elms = GetAllFocusableChildren(RootElements).OrderBy(x => x.Z).ToList();
+                int count = 0;
+
+                int idx = elms.IndexOf(FocusedElement) + 1;
+                idx = idx > elms.Count - 1 ? 0 : idx;
+
+                var focusedItem = GetSubChildByGuid(elms[idx].UID, RootElements);
+                MoveFocus(focusedItem);
+                return;
             }
 
-            // Update the highest Z-index
-            HighestZ = sortedElements.Count;
-        }
+            var nextElement = FindNearestElement(FocusedElement, direction);
+            MoveFocus(nextElement);
 
+
+        }
 
         public void HandleInput()
         {
@@ -382,13 +477,10 @@ namespace MelonUI.Managers
                         case ConsoleKey.RightArrow:
                             MoveFocus(Direction.Right);
                             break;
-                        case ConsoleKey.Tab:
-                            FocusedElement.IsFocused = false;
-                            FocusedElement = RootElements[RootElements.IndexOf(FocusedElement) + 1];
-                            FocusedElement.IsFocused = true;
-                            SetStatus($"Selected: {FocusedElement.GetType().Name} at {FocusedElement.ActualX},{FocusedElement.ActualY}");
-
+                        case ConsoleKey.Z:
+                            MoveFocus(Direction.Any);
                             break;
+
                     }
                 }
                 else

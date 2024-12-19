@@ -149,8 +149,8 @@ namespace MelonUI.Default
             foreach (var pos in _positions)
             {
                 int columnWidth =( animatedWidth / _columnsPerRow[pos.Row]) - 1;
-                int startX = startXOffset + (columnWidth * pos.Column) + 1; // Adjust for accurate positioning
-                int startY = startYOffset + (rowHeight * pos.Row) + 1; // Adjust for accurate positioning
+                int startX = startXOffset + (columnWidth * pos.Column) + 1; 
+                int startY = startYOffset + (rowHeight * pos.Row) + 1; 
                 int adjustedColumnWidth = columnWidth;
                 int adjustedRowHeight = rowHeight;
 

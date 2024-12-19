@@ -5,7 +5,7 @@ using System.IO;
 using System.Linq;
 using MelonUI.Base;
 
-namespace MelonUI.Components
+namespace MelonUI.Default
 {
     public class FilePicker : UIElement
     {

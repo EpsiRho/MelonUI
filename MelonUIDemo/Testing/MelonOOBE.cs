@@ -1,5 +1,4 @@
-﻿using MelonUI.Components;
-using MelonUI.Default;
+﻿using MelonUI.Default;
 using MelonUI.Managers;
 using System;
 using System.Collections.Generic;
@@ -114,7 +113,7 @@ namespace MelonUIDemo.Testing
                 UseStatusBar = true,
                 Background = Color.FromArgb(0, 255, 255, 255)
             };
-            menu.Options.Add(("Show Music Player", () =>
+            menu.Options.Add(new MenuItem("Show Music Player", () =>
             {
                 var mgrid = new GridContainer(1, true, 1) // Create a Grid to put the item in so we can use it's animation model (true)
                 {
@@ -135,7 +134,7 @@ namespace MelonUIDemo.Testing
                 WindowManager.AddElement(mgrid);
             }
             ));
-            menu.Options.Add(("Show Image", () =>
+            menu.Options.Add(new MenuItem("Show Image", () =>
             {
                 // Image
                 ConsoleImage img = new ConsoleImage(@"", "40%", "99%")
