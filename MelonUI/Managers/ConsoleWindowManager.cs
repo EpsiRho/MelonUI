@@ -184,6 +184,27 @@ namespace MelonUI.Managers
 
             return null;
         }
+        public UIElement GetSubChildByName(string name, List<UIElement> elms = null)
+        {
+            if (elms == null)
+            {
+                elms = RootElements;
+            }
+            foreach (var elm in elms)
+            {
+                if (elm.Name == name)
+                {
+                    return elm;
+                }
+                var check = GetSubChildByName(name, elm.Children);
+                if (check != null)
+                {
+                    return check;
+                }
+            }
+
+            return null;
+        }
         public void SetSubZByGuid(int z, string uid, List<UIElement> elms = null)
         {
             if(elms == null)

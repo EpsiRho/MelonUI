@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -546,10 +547,54 @@ namespace MelonUI.Base
             var prop = element.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
             if (prop == null || !prop.CanWrite)
             {
-                // Property not found or not writable. Fail Compilation
-                Failed = true;
-                CompilerMessages.Add($"Element property \"{propertyName}\" cannot be found. (Are you using Fields or Properties? Is your Property Public?)");
-                return;
+                // Property not found; attempt to find a method with the same name
+                var method = element.GetType().GetMethod(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+                if (method != null)
+                {
+                    // Assume that if the value is a binding expression, it's an event binding
+                    if (value is string strVal && strVal.StartsWith("{") && strVal.EndsWith("}"))
+                    {
+                        string bindingRef = strVal.Substring(1, strVal.Length - 2).Trim();
+                        try
+                        {
+                            Binding binding = CreateBinding(bindingRef);
+                            bool fuck = false;
+                            if (binding.IsEvent)
+                            {
+                                Delegate handlerDelegate = Delegate.CreateDelegate(binding.EventInfo.EventHandlerType, element, method);
+
+                                binding.Subscribe(handlerDelegate);
+
+                                ((UIElement)element).SetBinding(propertyName, binding);
+                            }
+                            else
+                            {
+                                CompilerMessages.Add($"Binding \"{bindingRef}\" is not an event and cannot be assigned to method \"{propertyName}\".");
+                                Failed = true;
+                                return;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Failed = true;
+                            CompilerMessages.Add($"Failed to bind \"{bindingRef}\" to method \"{propertyName}\": {ex.Message}");
+                        }
+                    }
+                    else
+                    {
+                        CompilerMessages.Add($"Invalid binding value for method \"{propertyName}\". Expected a binding expression.");
+                        Failed = true;
+                    }
+                }
+                else
+                {
+                    // Property not found or not writable. Fail Compilation
+                    Failed = true;
+                    CompilerMessages.Add($"Element property \"{propertyName}\" cannot be found. (Are you using Fields or Properties? Is your Property Public?)");
+                    return;
+
+                }
+
             }
 
             // Search backends if string looks like {backendProp}
@@ -559,13 +604,16 @@ namespace MelonUI.Base
                 if(name.StartsWith("{") && name.EndsWith("}"))
                 {
                     name = name.Replace("{", "").Replace("}", "");
-                    var refs = FindPropertyReference(name);
+                    Binding binding = CreateBinding(name);
                     try
                     {
-                        Binding binding = new Binding(refs.Instance, refs.Property);
-                        if (typeof(UIElement).IsAssignableFrom(element.GetType()))
+                        if (!binding.IsEvent)
                         {
                             ((UIElement)element).SetBinding(propertyName, binding);
+                        }
+                        else
+                        {
+                            return;
                         }
                     }
                     catch (Exception)
@@ -870,61 +918,86 @@ namespace MelonUI.Base
             return value;
         }
 
-        public Binding CreateBinding(string className, string propertyName)
+        public Binding CreateBinding(string classAndMemberPath)
         {
-            // 1. Find the type
-            Type foundType = null;
-            foreach (var asm in Assemblies)
+            if (string.IsNullOrWhiteSpace(classAndMemberPath))
+                throw new ArgumentException("Binding path cannot be null or empty.", nameof(classAndMemberPath));
+
+            var parts = classAndMemberPath.Split('.');
+            if (parts.Length < 2)
+                throw new ArgumentException("Binding path must include at least a class name and a member name.", nameof(classAndMemberPath));
+
+            // Start by resolving the first part, which could be a backend object or a static class
+            string initialClassName = parts[0];
+            object currentObject = null;
+            Type currentType = null;
+
+            // Attempt to resolve as an instance in BackendObjects
+            if (BackendObjects.TryGetValue(initialClassName, out currentObject))
             {
-                foreach (var space in Namespaces)
-                {
-                    var t = asm.GetType($"{space}.{className}", throwOnError: false, ignoreCase: false);
-                    if (t != null)
-                    {
-                        foundType = t;
-                        break;
-                    }
-                }
-                if (foundType != null) break;
-            }
-
-            if (foundType != null)
-            {
-                // Check for a static property
-                var staticProp = foundType.GetProperty(propertyName, BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-                if (staticProp != null)
-                {
-                    return new Binding(staticProp);
-                }
-
-                // Not static, need an instance
-                if (BackendObjects.TryGetValue(className, out var backendInstance))
-                {
-                    var instanceProp = backendInstance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-                    if (instanceProp != null)
-                    {
-                        return new Binding(backendInstance, instanceProp);
-                    }
-                }
-
-                return null;
+                currentType = currentObject.GetType();
             }
             else
             {
-                // No type found. Maybe it's only in BackendObjects
-                if (BackendObjects.TryGetValue(className, out var backendInstance))
-                {
-                    var instanceProp = backendInstance.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
-                    if (instanceProp != null)
-                    {
-                        return new Binding(backendInstance, instanceProp);
-                    }
+                // Attempt to resolve as a static class from registered namespaces and assemblies
+                currentType = FindElementType(initialClassName);
+                if (currentType == null)
+                    throw new Exception($"Cannot find class or backend object named \"{initialClassName}\".");
+            }
 
-                    return null;
+            // Traverse the binding path
+            for (int i = 1; i < parts.Length; i++)
+            {
+                string memberName = parts[i];
+                bool isLast = (i == parts.Length - 1);
+
+                // Attempt to find a property
+                PropertyInfo prop = currentType.GetProperty(memberName, BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (prop != null)
+                {
+                    if (isLast)
+                    {
+                        return new Binding(currentObject, prop);
+                    }
+                    else
+                    {
+                        currentObject = prop.GetValue(currentType.IsClass && prop.GetGetMethod(true).IsStatic ? null : currentObject);
+                        if (currentObject == null)
+                            throw new Exception($"Property \"{memberName}\" on \"{currentType.Name}\" is null.");
+                        currentType = currentObject.GetType();
+                        continue;
+                    }
                 }
 
-                return null;
+                // Attempt to find an event
+                EventInfo evt = currentType.GetEvent(memberName, BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
+                if (evt != null)
+                {
+                    if (isLast)
+                    {
+                        return new Binding(currentObject, evt);
+                    }
+                    else
+                    {
+                        // Intermediate events are not traversable
+                        throw new Exception($"Cannot traverse through event \"{memberName}\" in binding path.");
+                    }
+                }
+
+                // Attempt to find a static class nested within the current type
+                Type nestedType = currentType.GetNestedType(memberName, BindingFlags.Public | BindingFlags.Static);
+                if (nestedType != null)
+                {
+                    currentObject = null; // Static class, no instance
+                    currentType = nestedType;
+                    continue;
+                }
+
+                // Member not found
+                throw new Exception($"Member \"{memberName}\" not found on type \"{currentType.Name}\".");
             }
+
+            throw new Exception($"Invalid binding path: \"{classAndMemberPath}\".");
         }
 
         protected override void RenderContent(ConsoleBuffer buffer)

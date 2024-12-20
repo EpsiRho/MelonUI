@@ -1,4 +1,5 @@
 ﻿using MelonUI.Default;
+using MelonUI.Managers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,5 +22,6 @@ namespace MelonUIDemo.Testing
                 Option = "Delete Cache"
             },
         };
+        public static ConsoleWindowManager CWM { get; set; }
     }
 }

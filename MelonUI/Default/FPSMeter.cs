@@ -29,7 +29,7 @@ namespace MelonUI.Default
                 _stopwatch.Restart();
             }
 
-            // Mark for re-render if needed
+            // Mark for re-render
             NeedsRecalculation = true;
         }
 

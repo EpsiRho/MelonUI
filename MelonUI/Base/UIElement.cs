@@ -66,33 +66,49 @@ namespace MelonUI.Base
         protected virtual char BoxBottomRight => '┘';
         protected virtual char BoxHorizontal => '─';
         protected virtual char BoxVertical => '│';
+        /// <summary>
+        /// Sets a binding for a property or event.
+        /// </summary>
         public void SetBinding(string propertyName, Binding binding)
         {
+            if (binding == null)
+                throw new ArgumentNullException(nameof(binding));
+
             _bindings[propertyName] = binding;
             NeedsRecalculation = true;
         }
 
+        /// <summary>
+        /// Gets the bound value or the local value.
+        /// </summary>
         protected object GetBoundValue(string propertyName, object localValue)
         {
             if (_bindings.TryGetValue(propertyName, out var binding))
             {
-                return binding.GetValue();
+                if (binding.IsProperty)
+                    return binding.GetValue();
             }
             return localValue;
         }
 
+        /// <summary>
+        /// Sets the bound value or the local value.
+        /// </summary>
         protected void SetBoundValue(string propertyName, object value, ref object localStorage)
         {
-            if (_bindings.ContainsKey(propertyName))
+            if (_bindings.TryGetValue(propertyName, out var binding))
             {
-                // Property is bound, update backend property
-                _bindings[propertyName].SetValue(value);
+                if (binding.IsProperty)
+                {
+                    binding.SetValue(value);
+                    NeedsRecalculation = true;
+                    return;
+                }
+                // Event bindings are handled separately
             }
-            else
-            {
-                // Not bound, store locally
-                localStorage = value;
-            }
+
+            // Not bound, set locally
+            localStorage = value;
             NeedsRecalculation = true;
         }
 

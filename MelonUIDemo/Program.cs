@@ -8,7 +8,7 @@ using System.Collections.Concurrent;
 using MelonUI.Base;
 
 var manager = new ConsoleWindowManager(); // Create a new window manager
-
+TestPageBackend.CWM = manager;
 manager.SetTitle("TEST");
 
 TextBlock tb = new TextBlock()
@@ -22,6 +22,7 @@ TextBlock tb = new TextBlock()
 
 string xml = File.ReadAllText(@"C:\Users\jhset\Desktop\TestPage.xml");
 var page = new MUIPage();
+
 
 var success = page.Compile(xml);
 
@@ -41,7 +42,8 @@ else
 
 }
 manager.SetTitle("MXML Demo");
-
+//var item = (FPSCounter)manager.GetSubChildByName("FPSDisplay");
+//manager.FrameRendered += item.OnFrameRendered;
 
 CancellationTokenSource CancelSource = new CancellationTokenSource();
 manager.ManageConsole(CancelSource.Token);
@@ -56,19 +58,20 @@ fileSystemWatcher.NotifyFilter = NotifyFilters.LastWrite;
 bool ping = false;
 fileSystemWatcher.Changed += (s, e) =>
 {
+    manager.SetStatus("Changes Found");
     if (e.ChangeType != WatcherChangeTypes.Changed)
     {
         return;
     }
-    if (!ping)
-    {
-        ping = true;
-        return;
-    }
-    else
-    {
-        ping = false;
-    }
+    //if (!ping)
+    //{
+    //    ping = true;
+    //    return;
+    //}
+    //else
+    //{
+    //    ping = false;
+    //}
     manager.SetStatus("Waiting for file to unlock");
     //Thread.Sleep(1000);
     try
