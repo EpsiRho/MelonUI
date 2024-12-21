@@ -13,8 +13,8 @@ namespace MelonUI.Default
         private object _Option;
         public string Option
         {
-            get => (string)GetBoundValue(nameof(Text), _Option);
-            set => SetBoundValue(nameof(Text), value, ref _Option);
+            get => (string)GetBoundValue(nameof(Option), _Option);
+            set => SetBoundValue(nameof(Option), value, ref _Option);
         }
         public Action OnSelect { get; set; }
         public MenuItem()

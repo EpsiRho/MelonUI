@@ -120,10 +120,80 @@ fileSystemWatcher.Changed += (s, e) =>
 };
 
 int secs = 0;
+int r = 0, g = 0, b = 0;
+bool rup = true, gup = false, bup = false;
+int increment = 1;
 while (true)
 {
-    TestPageBackend.Name = $"{secs}s online";
-    Thread.Sleep(1000);
+    string fullText = $"Woah! Pretty Rainbow Text :D";
+    //TestPageBackend.Name = $"{secs}s online";
+    string temp = "";
+
+    TestPageBackend.ProgColor = Color.FromArgb(255, r, g, b);
+    for(int i = 0; i < fullText.Length; i++)
+    {
+        if (rup)
+        {
+            r+= increment;
+        }
+        else
+        {
+            r-= increment;
+        }
+        if (gup)
+        {
+            g += increment;
+        }
+        else
+        {
+            g -= increment;
+        }
+        if (bup)
+        {
+            b += increment;
+        }
+        else
+        {
+            b -= increment;
+        }
+
+        if(r <= 0)
+        {
+            r = 0;
+        }
+        if (g <= 0)
+        {
+            g = 0;
+        }
+        if (b <= 0)
+        {
+            b = 0;
+        }
+
+
+        if (r >= 255)
+        {
+            r = 255;
+            rup = false;
+            gup = true;
+        }
+        if (g >= 255)
+        {
+            g = 255;
+            gup = false;
+            bup = true;
+        }
+        if (b >= 255)
+        {
+            b = 255;
+            bup = false;
+            rup = true;
+        }
+
+        temp += $"[Color({r},{g},{b})]{fullText[i]}";
+    }
+    TestPageBackend.TestText = temp;
+    Thread.Sleep(50);
     secs++;
 }
 

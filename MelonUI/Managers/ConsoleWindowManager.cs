@@ -498,7 +498,7 @@ namespace MelonUI.Managers
                         case ConsoleKey.RightArrow:
                             MoveFocus(Direction.Right);
                             break;
-                        case ConsoleKey.Z:
+                        case ConsoleKey.Oem3:
                             MoveFocus(Direction.Any);
                             break;
 

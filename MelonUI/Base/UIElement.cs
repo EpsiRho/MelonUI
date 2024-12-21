@@ -1,10 +1,12 @@
-﻿using MelonUI.Managers;
+﻿using MelonUI.Enums;
+using MelonUI.Managers;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace MelonUI.Base
 {
@@ -15,49 +17,193 @@ namespace MelonUI.Base
         public virtual bool NeedsRecalculation { get; set; } = true;
         public virtual bool RenderThreadDeleteMe { get; set; } = false;
         protected Dictionary<string, Binding> _bindings = new Dictionary<string, Binding>();
-        public string UID { get; set; } = Guid.NewGuid().ToString();
-        public string X { get; set; }
-        public string Y { get; set; }
-        public string Width { get; set; }
-        public string Height { get; set; }
-        public int Z { get; set; } = 0;
+        private object _XYAlignment = Alignment.TopLeft;
+        public Alignment XYAlignment
+        {
+            get => (Alignment)GetBoundValue(nameof(XYAlignment), _XYAlignment);
+            set => SetBoundValue(nameof(XYAlignment), value, ref _XYAlignment);
+        }
+        private object _UID = Guid.NewGuid().ToString();
+        public string UID
+        {
+            get => (string)GetBoundValue(nameof(UID), _UID);
+            set => SetBoundValue(nameof(UID), value, ref _UID);
+        }
+        private object _X = "0";
+        public string X
+        {
+            get
+            {
+                var val = GetBoundValue(nameof(X), $"{_X}");
+                return $"{val}";
+            }
+            set => SetBoundValue(nameof(X), value, ref _X);
+        }
+        private object _Y = "0";
+        public string Y
+        {
+            get
+            {
+                var val = GetBoundValue(nameof(Y), $"{_Y}");
+                return $"{val}";
+            }
+            set => SetBoundValue(nameof(Y), value, ref _Y);
+        }
+        private object _Width = "0";
+        public string Width
+        {
+            get
+            {
+                var val = GetBoundValue(nameof(Width), $"{_Width}");
+                return $"{val}";
+            }
+            set => SetBoundValue(nameof(Width), value, ref _Width);
+        }
+        private object _Height = "0";
+        public string Height
+        {
+            get
+            {
+                var val = GetBoundValue(nameof(Height), $"{_Height}");
+                return $"{val}";
+            }
+            set => SetBoundValue(nameof(Height), value, ref _Height);
+        }
+        private object _MinWidth = "5";
+        public string MinWidth
+        {
+            get 
+            { 
+                var val = GetBoundValue(nameof(MinWidth), $"{_MinWidth}");
+                return $"{val}";
+            }
+
+            set => SetBoundValue(nameof(MinWidth), value, ref _MinWidth);
+        }
+        private object _MinHeight = "3";
+        public string MinHeight
+        {
+            get
+            {
+                var val = GetBoundValue(nameof(MinHeight), $"{_MinHeight}");
+                return $"{val}";
+            }
+            set => SetBoundValue(nameof(MinHeight), value, ref _MinHeight);
+        }
+        private object _MaxWidth = "";
+        public string MaxWidth
+        {
+            get
+            {
+                var val = GetBoundValue(nameof(MaxWidth), $"{_MaxWidth}");
+                return $"{val}";
+            }
+
+            set => SetBoundValue(nameof(MaxWidth), value, ref _MaxWidth);
+        }
+        private object _MaxHeight = "";
+        public string MaxHeight
+        {
+            get
+            {
+                var val = GetBoundValue(nameof(MaxHeight), $"{_MaxHeight}");
+                return $"{val}";
+            }
+            set => SetBoundValue(nameof(MaxHeight), value, ref _MaxHeight);
+        }
+        private object _Z = 0;
+        public int Z
+        {
+            get => (int)GetBoundValue(nameof(Z), _Z);
+            set => SetBoundValue(nameof(Z), value, ref _Z);
+        }
         public int ActualX { get; protected set; }
         public int ActualY { get; protected set; }
         public int ActualWidth { get; protected set; }
         public int ActualHeight { get; protected set; }
-        public bool IsFocused { get; set; }
-        public virtual bool ConsiderForFocus { get; set; } = true;
-        public bool _IsVisible = true;
-        public bool ControlLock { get; set; }
+        public int ActualMinWidth { get; protected set; }
+        public int ActualMinHeight { get; protected set; }
+        public int ActualMaxWidth { get; protected set; }
+        public int ActualMaxHeight { get; protected set; }
+        private object _IsFocused = false;
+        public bool IsFocused
+        {
+            get => (bool)GetBoundValue(nameof(IsFocused), _IsFocused);
+            set => SetBoundValue(nameof(IsFocused), value, ref _IsFocused);
+        }
+        private object _ConsiderForFocus = true;
+        public virtual bool ConsiderForFocus
+        {
+            get => (bool)GetBoundValue(nameof(ConsiderForFocus), _ConsiderForFocus);
+            set => SetBoundValue(nameof(ConsiderForFocus), value, ref _ConsiderForFocus);
+        }
+        public object _LockControls = false;
+        public virtual bool LockControls
+        {
+            get => (bool)GetBoundValue(nameof(LockControls), _LockControls);
+            set => SetBoundValue(nameof(LockControls), value, ref _LockControls);
+        }
+        public object _IsVisible = true;
         public bool IsVisible
         {
-            get
-            {
-                return _IsVisible;
-            }
-            set
-            {
-                if (_IsVisible != value)
-                {
-                    _IsVisible = value;
-                }
-            }
+            get => (bool)GetBoundValue(nameof(IsVisible), _IsVisible);
+            set => SetBoundValue(nameof(IsVisible), value, ref _IsVisible);
         }
         public bool HasCalculatedLayout { get; set; }
         public UIElement Parent { get; set; }
         public virtual ConsoleWindowManager ParentWindow { get; set; }
         public List<UIElement> Children { get; } = new List<UIElement>();
-        public string? Name { get; set; }
+        public object _Name = "";
+        public string? Name
+        {
+            get => (string?)GetBoundValue(nameof(Name), _Name);
+            set => SetBoundValue(nameof(Name), value, ref _Name);
+        }
         protected List<KeyboardControl> KeyboardControls { get; } = new();
 
         // Box drawing configuration
-        public virtual bool ShowBorder { get; set; } = true;
-        public virtual Color BorderColor { get; set; } = Color.Gray;
-        public virtual Color FocusedBorderColor { get; set; } = Color.Cyan;
-        public virtual Color Foreground { get; set; } = Color.White;
-        public virtual Color Background { get; set; } = Color.FromArgb(0,0,0,0);
-        public virtual Color FocusedForeground { get; set; } = Color.Cyan;
-        public virtual Color FocusedBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
+        public object _ShowBorder = true;
+        public bool ShowBorder
+        {
+            get => (bool)GetBoundValue(nameof(ShowBorder), _ShowBorder);
+            set => SetBoundValue(nameof(ShowBorder), value, ref _ShowBorder);
+        }
+        public object _BorderColor = Color.Gray;
+        public Color BorderColor
+        {
+            get => (Color)GetBoundValue(nameof(BorderColor), _BorderColor);
+            set => SetBoundValue(nameof(BorderColor), value, ref _BorderColor);
+        }
+        public object _FocusedBorderColor = Color.Cyan;
+        public Color FocusedBorderColor
+        {
+            get => (Color)GetBoundValue(nameof(FocusedBorderColor), _FocusedBorderColor);
+            set => SetBoundValue(nameof(FocusedBorderColor), value, ref _FocusedBorderColor);
+        }
+        public object _Foreground = Color.White;
+        public Color Foreground
+        {
+            get => (Color)GetBoundValue(nameof(Foreground), _Foreground);
+            set => SetBoundValue(nameof(Foreground), value, ref _Foreground);
+        }
+        public object _Background = Color.FromArgb(0, 0, 0, 0);
+        public Color Background
+        {
+            get => (Color)GetBoundValue(nameof(Background), _Background);
+            set => SetBoundValue(nameof(Background), value, ref _Background);
+        }
+        public object _FocusedForeground = Color.Cyan;
+        public Color FocusedForeground
+        {
+            get => (Color)GetBoundValue(nameof(FocusedForeground), _FocusedForeground);
+            set => SetBoundValue(nameof(FocusedForeground), value, ref _FocusedForeground);
+        }
+        public object _FocusedBackground = Color.FromArgb(0, 0, 0, 0);
+        public Color FocusedBackground
+        {
+            get => (Color)GetBoundValue(nameof(FocusedBackground), _FocusedBackground);
+            set => SetBoundValue(nameof(FocusedBackground), value, ref _FocusedBackground);
+        }
 
         // Box drawing characters - can be overridden by derived classes
         protected virtual char BoxTopLeft => '┌';
@@ -66,6 +212,10 @@ namespace MelonUI.Base
         protected virtual char BoxBottomRight => '┘';
         protected virtual char BoxHorizontal => '─';
         protected virtual char BoxVertical => '│';
+        public UIElement()
+        {
+        }
+
         /// <summary>
         /// Sets a binding for a property or event.
         /// </summary>
@@ -166,10 +316,80 @@ namespace MelonUI.Base
 
         public virtual void CalculateLayout(int parentX, int parentY, int parentWidth, int parentHeight)
         {
-            ActualX = Math.Max(0, ParseRelativeValue(X, parentWidth) + parentX);
-            ActualY = Math.Max(0, ParseRelativeValue(Y, parentHeight) + parentY);
-            ActualWidth = Math.Min(parentWidth - (ActualX - parentX), ParseRelativeValue(Width, parentWidth));
-            ActualHeight = Math.Min(parentHeight - (ActualY - parentY), ParseRelativeValue(Height, parentHeight));
+            // Get inital X/Y
+            int parsedX = Math.Max(0, ParseRelativeValue(X, parentWidth) + parentX);
+            int parsedY = Math.Max(0, ParseRelativeValue(Y, parentHeight) + parentY);
+
+            // Get Min W/H
+            ActualMinWidth = Math.Max(0, ParseRelativeValue(MinWidth, parentWidth));
+            ActualMinHeight = Math.Max(0, ParseRelativeValue(MinHeight, parentHeight));
+
+            // Get Max W/H
+            ActualMaxWidth = String.IsNullOrEmpty(MaxWidth) ? parentWidth : Math.Min(parentWidth, ParseRelativeValue(MaxWidth, parentWidth));
+            ActualMaxHeight = String.IsNullOrEmpty(MaxHeight) ? parentWidth : Math.Min(parentWidth, ParseRelativeValue(MaxHeight, parentWidth));
+
+            // Get inital W/H, based on if the Min W/H is bigger than the Actual W/H
+            int parsedWidth = Math.Max(ActualMinWidth, ParseRelativeValue(Width, parentWidth));
+            int parsedHeight = Math.Max(ActualMinHeight, ParseRelativeValue(Height, parentHeight));
+
+            // Get W/H based on Max W/H
+            parsedWidth = String.IsNullOrEmpty(MaxWidth) ? Math.Min(parsedWidth, ActualMaxWidth) : parsedWidth;
+            parsedHeight = String.IsNullOrEmpty(MaxHeight) ? Math.Min(parsedHeight, ActualMaxHeight) : parsedHeight;
+            switch (XYAlignment)
+            {
+                case Alignment.TopLeft:
+                    ActualX = Math.Max(0, parsedX + parentX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    break;
+                case Alignment.TopRight:
+                    ActualX = Math.Max(0, parsedX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    ActualX = parentWidth - (ActualX + parsedWidth);
+
+                    break;
+                case Alignment.TopCenter:
+                    ActualX = Math.Max(0, parsedX + parentX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    ActualX = (parentWidth / 2) - (parsedWidth / 2);
+                    break;
+                case Alignment.BottomLeft:
+                    ActualX = Math.Max(0, parsedX + parentX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    ActualY = parentHeight - (ActualY + parsedHeight);
+                    break;
+                case Alignment.BottomRight:
+                    ActualX = Math.Max(0, parsedX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    ActualY = parentHeight - (ActualY + parsedHeight);
+                    ActualX = parentWidth - (ActualX + parsedWidth);
+                    break;
+                case Alignment.BottomCenter:
+                    ActualX = Math.Max(0, parsedX + parentX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    ActualX = (parentWidth / 2) - (parsedWidth / 2);
+                    ActualY = parentHeight - (ActualY + parsedHeight);
+                    break;
+                case Alignment.Centered:
+                    ActualX = Math.Max(0, parsedX + parentX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    ActualX = (parentWidth / 2) - (parsedWidth / 2);
+                    ActualY = (parentHeight / 2) - (parsedHeight / 2);
+                    break;
+                case Alignment.CenterLeft:
+                    ActualX = Math.Max(0, parsedX + parentX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    ActualY = (parentHeight / 2) - (parsedHeight / 2);
+                    break;
+                case Alignment.CenterRight:
+                    ActualX = Math.Max(0, parsedX);
+                    ActualY = Math.Max(0, parsedY + parentY);
+                    ActualY = (parentHeight / 2) - (parsedHeight / 2);
+                    ActualX = parentWidth - (ActualX + parsedWidth);
+                    break;
+            }
+
+            ActualWidth = Math.Min(parentWidth - (ActualX - parentX), parsedWidth);
+            ActualHeight = Math.Min(parentHeight - (ActualY - parentY), parsedHeight);
 
             foreach (var child in Children)
             {
@@ -324,6 +544,10 @@ namespace MelonUI.Base
         }
         public virtual void HandleKey(ConsoleKeyInfo keyInfo)
         {
+            if (LockControls)
+            {
+                return;
+            }
             foreach (var control in KeyboardControls)
             {
                 if (control.Matches(keyInfo))

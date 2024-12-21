@@ -13,7 +13,6 @@ namespace MelonUI.Default
         public Direction StackDirection { get; set; } = Direction.Right;
         public int MaxStackDisplaySize = 5;
         public ConsoleWindowManager _parentWindow;
-        public override bool ShowBorder { get; set; } = false;
         public override ConsoleWindowManager ParentWindow
         {
             get
