@@ -77,12 +77,17 @@ namespace MelonUI.Base
             get => (bool)GetBoundValue(nameof(RequireAlt), _RequireAlt);
             set => SetBoundValue(nameof(RequireAlt), value, ref _RequireAlt);
         }
-        public Func<ConsoleKeyInfo, bool>? Wildcard { get; set; }
-        public object _Action ;
+        public object _Wildcard;
+        public Func<ConsoleKeyInfo, bool> Wildcard
+        {
+            get => (Func<ConsoleKeyInfo, bool>)GetBoundValue(nameof(Wildcard), _Wildcard);
+            set => SetBoundValue(nameof(Wildcard), value, ref _Wildcard);
+        }
+        public object _Action;
         public Action Action
         {
-            get => (Action?)GetBoundValue(nameof(RequireAlt), _RequireAlt);
-            set => SetBoundValue(nameof(RequireAlt), value, ref _RequireAlt);
+            get => (Action)GetBoundValue(nameof(Action), _Action);
+            set => SetBoundValue(nameof(Action), value, ref _Action);
         }
         public object _Description = "";
         public string? Description

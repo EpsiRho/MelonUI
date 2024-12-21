@@ -606,7 +606,7 @@ namespace MelonUI.Base
                     var item = Activator.CreateInstance(propType);
                     BackendObjects.TryAdd(str, item);
                 }
-                catch { /* ignore exceptions here as in original */ }
+                catch { /* Exception on Create Instance */ }
             }
             return true;
         }
@@ -614,7 +614,12 @@ namespace MelonUI.Base
         private bool HandleNestedProperty(object uiElement, XElement child)
         {
             var parts = child.Name.LocalName.Split('.');
-            if (parts.Length != 2) return true; // Just ignore if invalid?
+            if (parts.Length != 2)
+            {
+                Failed = true;
+                CompilerMessages.Add($"Too many parts, mxml cannot currently handled nested properties like this!");
+                return false;
+            }
 
             var propertyName = parts[1];
             var nestedEls = child.Elements().ToList();
@@ -639,8 +644,9 @@ namespace MelonUI.Base
                 foreach (var ne in nestedEls)
                 {
                     var childType = FindElementType(ne.Name.LocalName);
-                    if (Failed)
+                    if (childType == null)
                     {
+                        Failed = true;
                         CompilerMessages.Add($"Child element \"{ne.Name.LocalName}\" is unknown");
                         return false;
                     }
@@ -742,12 +748,12 @@ namespace MelonUI.Base
             try
             {
                 if (!binding.IsEvent)
-                    ((UIElement)element).SetBinding(propertyName, binding);
+                    ((dynamic)element).SetBinding(propertyName, binding);
             }
             catch
             {
                 Failed = true;
-                CompilerMessages.Add($"Property Binding \"{name}\" failed to bind for an unknown reason.");
+                CompilerMessages.Add($"Property Binding \"{name}\" failed to bind for an unknown reason. (Maybe it's property doesn't support MXML binding?)");
             }
         }
 
@@ -904,56 +910,65 @@ namespace MelonUI.Base
         {
             converted = null;
 
+            var realType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+            if (Nullable.GetUnderlyingType(targetType) != null && string.IsNullOrEmpty(strValue))
+            {
+                converted = null;
+                return true;
+            }
+
+
             // string
-            if (targetType == typeof(string))
+            if (realType == typeof(string))
             {
                 converted = strValue;
                 return true;
             }
             // int
-            if (targetType == typeof(int) && int.TryParse(strValue, out var i))
+            if (realType == typeof(int) && int.TryParse(strValue, out var i))
             {
                 converted = i;
                 return true;
             }
             // bool
-            if (targetType == typeof(bool) && bool.TryParse(strValue, out var b))
+            if (realType == typeof(bool) && bool.TryParse(strValue, out var b))
             {
                 converted = b;
                 return true;
             }
             // enum
-            if (targetType.IsEnum && Enum.TryParse(targetType, strValue, out var enumVal))
+            if (realType.IsEnum && Enum.TryParse(realType, strValue, out var enumVal))
             {
                 converted = enumVal;
                 return true;
             }
             // double
-            if (targetType == typeof(double) && double.TryParse(strValue, out var d))
+            if (realType == typeof(double) && double.TryParse(strValue, out var d))
             {
                 converted = d;
                 return true;
             }
             // float
-            if (targetType == typeof(float) && float.TryParse(strValue, out var f))
+            if (realType == typeof(float) && float.TryParse(strValue, out var f))
             {
                 converted = f;
                 return true;
             }
             // long
-            if (targetType == typeof(long) && long.TryParse(strValue, out var l))
+            if (realType == typeof(long) && long.TryParse(strValue, out var l))
             {
                 converted = l;
                 return true;
             }
             // short
-            if (targetType == typeof(short) && short.TryParse(strValue, out var s))
+            if (realType == typeof(short) && short.TryParse(strValue, out var s))
             {
                 converted = s;
                 return true;
             }
             // Color
-            if (targetType == typeof(Color))
+            if (realType == typeof(Color))
             {
                 if (TryConvertColor(strValue, out var colorValue))
                 {

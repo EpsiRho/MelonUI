@@ -159,7 +159,12 @@ namespace MelonUI.Base
             get => (string?)GetBoundValue(nameof(Name), _Name);
             set => SetBoundValue(nameof(Name), value, ref _Name);
         }
-        protected List<KeyboardControl> KeyboardControls { get; } = new();
+        public object _KeyboardControls = new List<KeyboardControl>();
+        public List<KeyboardControl> KeyboardControls
+        {
+            get => (List<KeyboardControl>)GetBoundValue(nameof(KeyboardControls), _KeyboardControls);
+            set => SetBoundValue(nameof(KeyboardControls), value, ref _KeyboardControls);
+        }
 
         // Box drawing configuration
         public object _ShowBorder = true;
@@ -233,12 +238,19 @@ namespace MelonUI.Base
         /// </summary>
         protected object GetBoundValue(string propertyName, object localValue)
         {
-            if (_bindings.TryGetValue(propertyName, out var binding))
+            try
             {
-                if (binding.IsProperty)
-                    return binding.GetValue();
+                if (_bindings.TryGetValue(propertyName, out var binding))
+                {
+                    if (binding.IsProperty)
+                        return binding.GetValue();
+                }
+                return localValue;
             }
-            return localValue;
+            catch (Exception)
+            {
+                return localValue;
+            }
         }
 
         /// <summary>
