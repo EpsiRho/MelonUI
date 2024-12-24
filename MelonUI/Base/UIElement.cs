@@ -2,6 +2,7 @@
 using MelonUI.Managers;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
 using System.Text;
@@ -15,6 +16,7 @@ namespace MelonUI.Base
         public virtual bool DefaultKeyControl { get; set; } = true;
         public virtual bool EnableCaching { get; set; } = true;
         public virtual bool NeedsRecalculation { get; set; } = true;
+        public virtual bool RespectBackgroundOnDraw { get; set; } = true;
         public virtual bool RenderThreadDeleteMe { get; set; } = false;
         protected Dictionary<string, Binding> _bindings = new Dictionary<string, Binding>();
         private object _XYAlignment = Alignment.TopLeft;
@@ -329,8 +331,8 @@ namespace MelonUI.Base
         public virtual void CalculateLayout(int parentX, int parentY, int parentWidth, int parentHeight)
         {
             // Get inital X/Y
-            int parsedX = Math.Max(0, ParseRelativeValue(X, parentWidth) + parentX);
-            int parsedY = Math.Max(0, ParseRelativeValue(Y, parentHeight) + parentY);
+            int parsedX = ParseRelativeValue(X, parentWidth) + parentX;
+            int parsedY = ParseRelativeValue(Y, parentHeight) + parentY;
 
             // Get Min W/H
             ActualMinWidth = Math.Max(0, ParseRelativeValue(MinWidth, parentWidth));
@@ -384,8 +386,8 @@ namespace MelonUI.Base
                 case Alignment.Centered:
                     ActualX = Math.Max(0, parsedX + parentX);
                     ActualY = Math.Max(0, parsedY + parentY);
-                    ActualX = (parentWidth / 2) - (parsedWidth / 2);
-                    ActualY = (parentHeight / 2) - (parsedHeight / 2);
+                    ActualX = (parentWidth / 2) - (parsedWidth / 2) + parsedX;
+                    ActualY = (parentHeight / 2) - (parsedHeight / 2) + parsedY;
                     break;
                 case Alignment.CenterLeft:
                     ActualX = Math.Max(0, parsedX + parentX);

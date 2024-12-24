@@ -11,7 +11,7 @@ namespace MelonUI.Base
 {
     public class ConsoleBuffer
     {
-        private ConsolePixel[,] Buffer;
+        public ConsolePixel[,] Buffer;
         public int Width { get; private set; }
         public int Height { get; private set; }
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -224,6 +225,15 @@ namespace MelonUI.Base
                     continue;
                 }
 
+                // If property not found, check if there's a method with that name for event binding
+                var method = currentType.GetMethod(memberName,BindingFlags.Static |
+                    BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+                if (method != null)
+                {
+                    if (isLast) return new Binding(currentObject, method);
+                }
+                    
+
                 // Check for event
                 var evt = currentType.GetEvent(memberName,
                     BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
@@ -414,7 +424,7 @@ namespace MelonUI.Base
         {
             if (element == null) return new Dictionary<string, string>();
 
-            var xmlFlagsAttr = element.Attribute("MXMLFLags");
+            var xmlFlagsAttr = element.Attribute("MXMLFlags");
             if (xmlFlagsAttr == null || string.IsNullOrWhiteSpace(xmlFlagsAttr.Value))
                 return new Dictionary<string, string>();
 
@@ -747,13 +757,14 @@ namespace MelonUI.Base
             }
             try
             {
+                var val = binding.GetValue();
                 if (!binding.IsEvent)
                     ((dynamic)element).SetBinding(propertyName, binding);
             }
-            catch
+            catch (Exception er)
             {
                 Failed = true;
-                CompilerMessages.Add($"Property Binding \"{name}\" failed to bind for an unknown reason. (Maybe it's property doesn't support MXML binding?)");
+                CompilerMessages.Add($"Property Binding \"{name}\" failed to bind. ({er.Message})");
             }
         }
 

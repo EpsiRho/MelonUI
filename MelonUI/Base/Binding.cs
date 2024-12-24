@@ -8,8 +8,17 @@ namespace MelonUI.Base
         private object _instance;
         private PropertyInfo _property;
         private EventInfo _event;
+        private MethodInfo _method;
+        private bool _isMethod;
         private bool _isStatic;
         private Delegate _eventHandler;
+        public bool IsStatic => _isStatic;
+        public bool IsProperty => _property != null;
+
+        public bool IsEvent => _event != null;
+        public bool IsMethod => _method != null;
+
+        public EventInfo EventInfo => _event;
 
         /// <summary>
         /// Binding for a property.
@@ -22,6 +31,18 @@ namespace MelonUI.Base
             _instance = instance;
             _property = property;
             _isStatic = property.GetGetMethod().IsStatic;
+        }
+        /// <summary>
+        /// Binding for a method.
+        /// </summary>
+        public Binding(object instance, MethodInfo method)
+        {
+            if (method == null)
+                throw new ArgumentNullException(nameof(method));
+
+            _instance = instance;
+            _method = method;
+            _isStatic = method.IsStatic;
         }
 
         /// <summary>
@@ -42,10 +63,16 @@ namespace MelonUI.Base
         /// </summary>
         public object GetValue()
         {
-            if (_property == null)
-                throw new InvalidOperationException("This binding is not for a property.");
-
-            return _property.GetValue(_isStatic ? null : _instance);
+            if (_property != null)
+            {
+                return _property.GetValue(_isStatic ? null : _instance);
+            }
+            else if(_method != null)
+            {
+                var action = (Action)Delegate.CreateDelegate(typeof(Action), _instance, _method);
+                return action;
+            }
+            return null;
         }
 
         /// <summary>
@@ -95,24 +122,6 @@ namespace MelonUI.Base
             }
         }
 
-        /// <summary>
-        /// Indicates whether this binding references a static member.
-        /// </summary>
-        public bool IsStatic => _isStatic;
-
-        /// <summary>
-        /// Indicates whether this binding is for a property.
-        /// </summary>
-        public bool IsProperty => _property != null;
-
-        /// <summary>
-        /// Indicates whether this binding is for an event.
-        /// </summary>
-        public bool IsEvent => _event != null;
-
-        /// <summary>
-        /// Exposes the EventInfo for event bindings.
-        /// </summary>
-        public EventInfo EventInfo => _event;
+        
     }
 }

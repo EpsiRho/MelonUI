@@ -15,9 +15,18 @@ namespace MelonUI.Default
             get
             {
                 var val = GetBoundValue(nameof(Text), $"{_Text}");
-                return $"{val}";
+                string stred = $"{val}";
+                return stred;
             }
-            set => SetBoundValue(nameof(Text), value, ref _Text);
+            set
+            {
+                SetBoundValue(nameof(Text), value, ref _Text);
+                if (SizeBasedOnText)
+                {
+                    string stred = $"{value}";
+                    Width = $"{stred.Length + (ShowBorder ? 2 : 0)}";
+                }
+            }
         }
 
         private object _TextAlignment = Alignment.TopLeft;
@@ -25,6 +34,12 @@ namespace MelonUI.Default
         {
             get => (Alignment)GetBoundValue(nameof(TextAlignment), _TextAlignment);
             set => SetBoundValue(nameof(TextAlignment), value, ref _TextAlignment);
+        }
+        private object _SizeBasedOnText = false;
+        public bool SizeBasedOnText
+        {
+            get => (bool)GetBoundValue(nameof(SizeBasedOnText), _SizeBasedOnText);
+            set => SetBoundValue(nameof(SizeBasedOnText), value, ref _SizeBasedOnText);
         }
 
         protected override void RenderContent(ConsoleBuffer buffer)
@@ -157,6 +172,7 @@ namespace MelonUI.Default
             }
             var paragraphs = text.Split('\n');
 
+            int last = 0;
             foreach (var paragraph in paragraphs)
             {
                 int start = 0;
@@ -175,10 +191,11 @@ namespace MelonUI.Default
                         }
                     }
 
-                    var lineColors = colors.GetRange(start, length);
+                    var lineColors = colors.GetRange(start + last, length);
                     wrappedLines.Add((line, lineColors));
                     start += length;
                 }
+                last += paragraph.Length + 1;
             }
 
             return wrappedLines;

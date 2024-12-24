@@ -1,0 +1,88 @@
+﻿<MUIPage Width="99%"
+		 Height="95%"
+		 Name="DemoPage"
+		 Assemblies="MelonUI,MelonUIDemo"
+		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing"
+		 Backends="TestPageBackend">
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,0,0"
+		   TextAlignment="TopLeft"
+		   XYAlignment="TopLeft"
+		   Width="30%"
+		   Height="22%">
+		<TextBlock.KeyboardControls>
+		<KeyboardControl Key="UpArrow" RequireShift="true" Action="{TestPageBackend.OnUp}"/>
+    		<KeyboardControl Wildcard="{TestPageBackend.IsAnyLetter}" Action="{TestPageBackend.OnAnyLetter}"/>
+		</TextBlock.KeyboardControls>
+  
+	</TextBlock>
+
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,255,255"
+		   TextAlignment="TopCenter"
+		   XYAlignment="TopCenter"
+		   Width="30%"
+		   Height="22%"/>
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,255,255"
+		   TextAlignment="TopRight"
+		   XYAlignment="TopRight"
+		   Width="30%"
+		   Height="22%"/>
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,255,255"
+		   TextAlignment="CenterLeft"
+		   XYAlignment="CenterLeft"
+		   Width="30%"
+		   Height="22%"/>
+	<ProgressBar Width="20%"
+		     Height="3"
+		     Name="TestPB"
+		     ProgressColor="{TestPageBackend.ProgColor}"
+		     EmptyColor="{TestPageBackend.ProgBgColor}"
+		     XYAlignment="Centered"
+		     Progress="0.4"/>
+
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,255,255"
+		   TextAlignment="CenterRight"
+		   XYAlignment="CenterRight"
+		   Width="30%"
+		   Height="22%"/>
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,255,255"
+		   TextAlignment="BottomLeft"
+		   XYAlignment="BottomLeft"
+		   Width="30%"
+		   Height="22%"/>
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,255,255"
+		   TextAlignment="BottomCenter"
+		   XYAlignment="BottomCenter"
+		   Width="30%"
+		   Height="22%"/>
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,255,255"
+		   TextAlignment="BottomRight"
+		   XYAlignment="BottomRight"
+		   Width="30%"
+		   Height="22%"/>
+
+
+</MUIPage>

@@ -11,31 +11,53 @@ namespace MelonUI.Default
 {
     public class TextBox : UIElement
     {
-        public string Text { get; set; } = "";
-        public string Label { get; set; } = "";
+        public object _Text = "";
+        public string Text
+        {
+            get => (string)GetBoundValue(nameof(Text), _Text);
+            set => SetBoundValue(nameof(Text), value, ref _Text);
+        }
+        public object _Label = "";
+        public string Label
+        {
+            get => (string)GetBoundValue(nameof(Label), _Label);
+            set => SetBoundValue(nameof(Label), value, ref _Label);
+        }
         public int CursorPosition { get; private set; } = 0;
-        public char HiddenCharacter { get; set; } = '*';
-        private bool _HideCharacters;
+        public object _HiddenCharacter = '*';
+        public char HiddenCharacter
+        {
+            get => (char)GetBoundValue(nameof(HiddenCharacter), _HiddenCharacter);
+            set => SetBoundValue(nameof(HiddenCharacter), value, ref _HiddenCharacter);
+        }
+        private object _HideCharacters;
         public bool HideCharacters
         {
             get
             {
-                return _HideCharacters;
+                return (bool)GetBoundValue(nameof(HideCharacters), _HideCharacters);
             }
             set
             {
-                if(_HideCharacters != value)
-                {
-                    _HideCharacters = value;
-                    IsCharactersHidden = value;
-                }
+                SetBoundValue(nameof(HideCharacters), value, ref _HideCharacters);
+                IsCharactersHidden = value;
             }
         }
         private bool IsCharactersHidden { get; set; } = false;
         public Color CursorColorForeground { get; set; } = Color.Cyan;
         public Color CursorColorBackground { get; set; } = Color.Gray;
-        public event Action<string, TextBox> OnTextChanged;
-        public event Action<string, TextBox> OnEnter;
+        public object _OnTextChanged;
+        public Action<string, TextBox> OnTextChanged
+        {
+            get => (Action<string, TextBox>)GetBoundValue(nameof(OnTextChanged), _OnTextChanged);
+            set => SetBoundValue(nameof(OnTextChanged), value, ref _OnTextChanged);
+        }
+        public object _OnEnter;
+        public Action<string, TextBox> OnEnter
+        {
+            get => (Action<string, TextBox>)GetBoundValue(nameof(OnEnter), _OnEnter);
+            set => SetBoundValue(nameof(OnEnter), value, ref _OnEnter);
+        }
         public Action EnterHit { get; set; }
         private int _scrollOffset = 0;
         private const int SCROLL_MARGIN = 2;

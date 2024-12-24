@@ -1,0 +1,139 @@
+<MUIPage Width="99%"
+		 Height="95%"
+		 Name="DemoWelcomePage"
+		 Assemblies="MelonUI,MelonUIDemo"
+		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Backends"
+		 Backends="DemoWelcomeBackend">
+	
+	<!-- # Notes:
+		 - There are no docs. These are the only docs. Good luck! (I will have docs on release :3)
+		 - I may have missed notes, if you have questions DM me or FAFO.
+		 
+		 - X/Y/Width/Height Properties are strings, because they support auto layouts by %
+		   for example: Width="50%" Height="50%" will make the page half the size of the console,
+		   and X="25%" and Y="25%" along with those will center it.
+		   - You can also easily position elements using XYAlignment="TopLeft/Centered/CenterRight/BottomCenter/etc"
+		 - ActualX/Y/Width/Height is the calulated integer values of the string counterparts
+		 - UID is set automatically on instantiation, ideally you wouldn't change it and is just used
+		   to differentiate objects. The CWM contains functions for getting sub children by name or UID.
+		 - Z value *can* be set but will be mostly ignored since it is used and managed primarily
+		   by the CWM focus controls (Hold Alt and use arrow keys to focus objects. Only the focused object
+		   has it's controls active).		   
+		 
+		 - Width/Height properties when in respect to the entire console
+		   can go out of bounds. This won't crash anything, but this can be seen
+		   if you have a W/H of auto layout type that is too large. (99% Width, 95% Height)
+		   
+		 - Assemblies and Namespaces are required for the page to function properly.
+		   If you are using a backend/custom control, you must include the namespace 
+		   and assembly (name of your app dll). MelonUI's default assemblies and Namespaces
+		   are required to resolve MUIPage at the top level, MelonUI and MelonUI.Base. 
+		   MelonUI.Default is required to use any of the default controls.
+		 
+		 - Bindings are denoted by {BackendClassName.PropertyName}, 
+		   for example <TextBlock Text="{PageBackend.Title}"/>
+		   There are a couple special shorthands for bindings:
+		   - If you pass an Event to an Method, the compiler will assume you want to
+			 bind the Method to the Event (Used when setting controls).
+		   - If you pass a method to an action, the compiler will wrap it in an action to pass
+		   
+		 - Most properties are auto converted from strings (FloatProperty="1.0"), some may have special
+		   property types that require a specific format (ColorProperty="1,255,255,255").
+		   - Some UIElements have special formatting in their properties too, right now that's just
+		     TextBlock.Text, which accepts text like "Some [Color(255,0,0)]Red Text [Color(255,255,255)]and now some [Color(0,255,0)]Green Text"
+		   - Lists can be set by opening the property with angle brackets, like:
+		     <OptionsMenu>
+				<MenuItem Option="Open File" Action="{Backend.OpenFile}"/>
+				<MenuItem Option="Compile" Action="{Backend.CompileLoadedFile}"/>
+			 </OptionsMenu>
+		   - If you give an Action property a UIElement, it will hide it on start, then
+		     Show it when the action is fired. The compiler creates an action for you in this case,
+			 but you can customize it with the property MXMLFlags:
+			 <OptionsMenu Name="MainMenu">
+				<MenuItem Option="Open File" Action="{Backend.OpenFile}">
+					<MenuItem.Action MXMLFlags="Hide(MainMenu)">
+						<TextBox Name="PathInput" Label="Enter the file path">
+							<TextBox.OnEnter MXMLFlags="Hide(PathInput),Show(MainMenu)"/>
+						</TextBox>
+					</MenuItem.Action>
+				</MenuItem>
+			 </OptionsMenu>
+			 
+		 - Keyboard controls can be added to any element by doing:
+		   <Board.KeyboardControls>
+				<KeyboardControl Key="LeftArrow" Action="{Controls.MoveLeftCommand}"/> 
+				<KeyboardControl Key="RightArrow" Action="{Controls.MoveRightCommand}"/>
+		   </Board.KeyboardControls>
+		   - Controls can be disabled by setting LockControls="true", and focus can be disabled
+			 all together by setting ConsiderForFocus="false"
+		 - UIElements have a border built in and shown by default, 
+		   but can be disabled by setting ShowBorder="false"
+		 - 
+		 
+		   
+		 # Unfinished Features/Known Issues (For V1):
+		 (Any line indicated with (?) is just something I'm going to explore)
+		 
+		 ## New UIElements
+		 - Line
+		 - MultiLine TextBox / Editable Listbox
+		 - Box Shadow (?)
+		 - RGB Color Picker
+		 - SearchBar
+		 - Graphs (Bar, Line(?))
+		 
+		 ## Library Accessories
+		 - VS Extension (?)
+		 - Snake Game Demo (?) (This would be used for the doc's tutorials)
+		 - LRCTool Demo (Porting my LRCTool over to MelonUI and releasing as it's own project)
+		 
+		 ## MXML
+		 - MUIPage mxml parsing (Placing a MUIpages in MXML and parsing it to a MUIPage object)
+		 - [Binding] attribute and source code generation
+		 - More verbose (and control over level of) compiler messages (only errors for now)
+		 - Compiler type converter extensions (Add your own custom type/unsupported type and a function
+											   to convert to add compiler support gaps or fine tuned support)
+		 
+		 ## Misc Library Stuff
+		 - Gradient helpers that return list of pixel colors for a given string length and colors
+		 - CWM disable title + status bar
+		 - CWM Add custom global controls
+		 
+		 ## Known Issues
+		 - Some Default UIElements are unfinished, while all of them work some of them may have properties that
+		   do not, or are not fully implemented.
+		 - 
+		 
+	-->
+	
+	<!-- Demo Info -->
+	<TextBlock Text="{DemoWelcomeBackend.WelcomeText}"
+			   Name="DemoInfo"
+			   Width="50%"
+			   ConsiderForFocus="false"
+			   Height="25%"
+			   XYAlignment="TopCenter"/>
+	
+	<!-- File Input -->
+	<TextBox Label="Input a file" OnEnter="{DemoWelcomeBackend.FilePathInput}"
+			 Name="FileInput"
+			 XYAlignment="TopCenter"
+			 Y="25%"
+			 Width="50%"
+			 Height="5"/>
+
+	<!-- Error Info -->
+	<TextBlock Text="{DemoWelcomeBackend.ErrorInfo}"
+			   IsVisible="false"
+			   XYAlignment="Centered"
+			   Width="25%"
+			   Height="25%"
+			   Name="ErrorInfo">
+		<Board.KeyboardControls>
+			<KeyboardControl Wildcard="{DemoWelcomeBackend.CloseErrorDiagFunc}" Action="{DemoWelcomeBackend.CloseErrorDiag}"/>
+		</Board.KeyboardControls>
+	</TextBlock>
+
+	<!--  -->
+	
+</MUIPage>

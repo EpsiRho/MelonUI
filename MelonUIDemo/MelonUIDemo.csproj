@@ -11,4 +11,10 @@
     <ProjectReference Include="..\MelonUI\MelonUI.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="Pages\DemoWelcome.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

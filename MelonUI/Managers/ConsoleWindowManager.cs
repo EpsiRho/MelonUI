@@ -24,6 +24,7 @@ namespace MelonUI.Managers
         public string Title = "";
         public string Status = "";
         private bool IsAltHeld = false;
+        public bool EnableSystemFocusControls = true;
         public int HighestZ = 0;
         public Color TitleForeground { get; set; } = Color.White;
         public Color TitleBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
@@ -223,6 +224,7 @@ namespace MelonUI.Managers
         }
         public void AddElement(UIElement element, bool forceFocus = true)
         {
+            forceFocus = EnableSystemFocusControls ? forceFocus : false;
             element.ParentWindow = this;
             if (FocusedElement == null)
             {
@@ -252,7 +254,12 @@ namespace MelonUI.Managers
                 }
                 element.Z = count;
                 FocusedElement.IsFocused = false;
-                FocusedElement = GetSubChildByGuid(focuselms.OrderByDescending(x => x.Z).FirstOrDefault().UID, element.Children);
+                var id = focuselms.OrderByDescending(x => x.Z).FirstOrDefault();
+                if(id == null)
+                {
+                    return;
+                }
+                FocusedElement = GetSubChildByGuid(id.UID, element.Children);
                 if(FocusedElement == null)
                 {
                     return;
@@ -401,7 +408,7 @@ namespace MelonUI.Managers
                 var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
                 foreach (var element in lst)
                 {
-                    MainBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer);
+                    MainBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
                 };
 
 
@@ -439,7 +446,10 @@ namespace MelonUI.Managers
                     SetSubZByGuid(count, e.UID);
                     count++;
                 }
-                FocusedElement.IsFocused = false;
+                if(FocusedElement != null)
+                {
+                    FocusedElement.IsFocused = false;
+                }
                 FocusedElement = focusedItem;
                 FocusedElement.IsFocused = true;
 
@@ -482,7 +492,7 @@ namespace MelonUI.Managers
                     IsAltHeld = false;
                 }
 
-                if (IsAltHeld)
+                if (IsAltHeld && EnableSystemFocusControls)
                 {
                     switch (key.Key)
                     {

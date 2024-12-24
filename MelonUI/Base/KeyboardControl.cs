@@ -28,7 +28,13 @@ namespace MelonUI.Base
             if (_bindings.TryGetValue(propertyName, out var binding))
             {
                 if (binding.IsProperty)
+                {
                     return binding.GetValue();
+                }
+                else if (binding.IsMethod)
+                {
+                    return binding.GetValue();
+                }
             }
             return localValue;
         }
