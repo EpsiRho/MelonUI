@@ -48,7 +48,7 @@ namespace MelonUI.Default
             var defaultBg = IsFocused ? FocusedBackground : Background;
 
             int maxWidth = ActualWidth - (ShowBorder ? 2 : 0);
-            int maxHeight = ActualHeight - (ShowBorder ? 2 : 0);
+            int maxHeight = ActualHeight - (ShowBorder ? 1 : 0);
 
             // Parse the text with inline colors
             var (plainText, colors) = ParseColorMarkup(Text);
@@ -59,7 +59,7 @@ namespace MelonUI.Default
             // Calculate the vertical starting position for the entire block
             int startY = CalculateStartY(wrappedLines.Count, maxHeight);
 
-            for (int i = 0; i < wrappedLines.Count && i + startY < ActualHeight; i++)
+            for (int i = 0; i < wrappedLines.Count && i + startY < maxHeight; i++)
             {
                 var (line, lineColors) = wrappedLines[i];
                 int lineWidth = GetStringWidth(line);

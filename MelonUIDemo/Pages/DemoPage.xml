@@ -19,7 +19,7 @@
   
 	</TextBlock>
 
-	<TextBlock Text="{TestPageBackend.TestText}"
+	<TextBlock Text="Hewwo"
 		   X="0"
 		   Y="0"
 		   FocusedForeground="1,255,255,255"

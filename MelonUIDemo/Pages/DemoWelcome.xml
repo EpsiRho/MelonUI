@@ -1,5 +1,5 @@
 <MUIPage Width="99%"
-		 Height="95%"
+		 Height="90%"
 		 Name="DemoWelcomePage"
 		 Assemblies="MelonUI,MelonUIDemo"
 		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Backends"
@@ -22,7 +22,7 @@
 		 
 		 - Width/Height properties when in respect to the entire console
 		   can go out of bounds. This won't crash anything, but this can be seen
-		   if you have a W/H of auto layout type that is too large. (99% Width, 95% Height)
+		   if you have a W/H of auto layout type that is too large. (99% Width, 90% Height)
 		   
 		 - Assemblies and Namespaces are required for the page to function properly.
 		   If you are using a backend/custom control, you must include the namespace 

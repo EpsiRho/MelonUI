@@ -9,7 +9,7 @@ using MelonUI.Base;
 using MelonUIDemo.Backends;
 
 DemoWelcomeBackend.CWM = new ConsoleWindowManager();
-DemoWelcomeBackend.CWM.SetTitle("[MelonUI V1b Demos]");
+DemoWelcomeBackend.CWM.SetTitle("[MelonUI V1.0b MXML Demo (1216122424)]");
 
 TextBlock tb = new TextBlock()
 {
