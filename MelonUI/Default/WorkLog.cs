@@ -18,7 +18,7 @@ namespace MelonUI.Default
         public int IndicatorTickMax { get; set; } = 10;
         public static string[] Indicators 
             = new string[] { "⠁", "⠉", "⠙", "⠸", "⠴", "⠦", "⠇", "⠃" };
-        public string Name { get; set; }
+        public string Label { get; set; }
         private WorkStatus _status;
         public WorkStatus Status
         {
@@ -48,24 +48,27 @@ namespace MelonUI.Default
             }
         }
         public Stopwatch timeSinceRunning { get; set; }
-        public int TotalItems { get; set; }
-        public int CompletedItems { get; set; }
+        public long TotalItems { get; set; }
+        public long CompletedItems { get; set; }
+        public string ElmName { get; set; }
         public WorkItem()
         { 
 
         }
-        public WorkItem(string name, bool isRunning)
+        public WorkItem(string name, string label, bool isRunning)
         {
-            Name = name;
+            ElmName = name;
+            Label = label;
             Status = isRunning ? WorkStatus.Running : WorkStatus.Waiting;
             if (isRunning)
             {
                 timeSinceRunning = Stopwatch.StartNew();
             }
         }
-        public WorkItem(string name, int totalItems, bool isRunning)
+        public WorkItem(string name, string label, int totalItems, bool isRunning)
         {
-            Name = name;
+            ElmName = name;
+            Label = label;
             TotalItems = totalItems;
             Status = isRunning ? WorkStatus.Running : WorkStatus.Waiting;
             if (isRunning)
@@ -153,6 +156,10 @@ namespace MelonUI.Default
             Tasks = tasks;
             VisibleStartIndex = 0;
         }
+        public WorkItem GetItemByName(string name)
+        {
+            return Tasks.FirstOrDefault(x => x.ElmName == name);
+        }
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
@@ -214,22 +221,22 @@ namespace MelonUI.Default
                 : "";
 
             string progress = ShowProgressBar && task.TotalItems > 0
-                ? RenderProgressBar(task, width - time.Length - itemCount.Length - status.Length - task.Name.Length - 7 - itemCountBoost)
+                ? RenderProgressBar(task, width - time.Length - itemCount.Length - status.Length - task.Label.Length - 7 - itemCountBoost)
                 : "";
 
-            string Name = ShowProgressBar && progress != "" ? progress : task.Name;
+            string Name = ShowProgressBar && progress != "" ? progress : task.Label;
 
             string namePart = "";
             if (itemCount == "")
             {
-                namePart = $"{status} {task.Name} {progress}".Trim();
+                namePart = $"{status} {task.Label} {progress}".Trim();
             }
             else
             {
-                namePart = $"{status} {itemCount} {task.Name} {progress}".Trim();
+                namePart = $"{status} {itemCount} {task.Label} {progress}".Trim();
             }
             string trimmedName = namePart.Length > width - time.Length - 1
-                ? namePart.Substring(0, width - time.Length - 4) + "..."
+                ? namePart.Substring(0, width - time.Length - 6) + "..."
                 : namePart;
 
             return $" {trimmedName.PadRight(width - time.Length - 3 - itemCountBoost)} {time}";
