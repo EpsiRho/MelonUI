@@ -1,4 +1,5 @@
-﻿using MelonUI.Base;
+﻿using MelonUI.Attributes;
+using MelonUI.Base;
 using MelonUI.Enums;
 using System;
 using System.Collections.Generic;
@@ -7,27 +8,10 @@ using System.Text.RegularExpressions;
 
 namespace MelonUI.Default
 {
-    public class TextBlock : UIElement
+    public partial class TextBlock : UIElement
     {
-        private object _Text;
-        public string Text
-        {
-            get
-            {
-                var val = GetBoundValue(nameof(Text), $"{_Text}");
-                string stred = $"{val}";
-                return stred;
-            }
-            set
-            {
-                SetBoundValue(nameof(Text), value, ref _Text);
-                if (SizeBasedOnText)
-                {
-                    string stred = $"{value}";
-                    Width = $"{stred.Length + (ShowBorder ? 2 : 0)}";
-                }
-            }
-        }
+        [Binding]
+        private string text;
 
         private object _TextAlignment = Alignment.TopLeft;
         public Alignment TextAlignment

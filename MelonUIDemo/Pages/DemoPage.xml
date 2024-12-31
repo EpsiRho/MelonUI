@@ -1,5 +1,5 @@
 ﻿<MUIPage Width="99%"
-		 Height="95%"
+		 Height="90%"
 		 Name="DemoPage"
 		 Assemblies="MelonUI,MelonUIDemo"
 		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing"
@@ -49,7 +49,7 @@
 		     ProgressColor="{TestPageBackend.ProgColor}"
 		     EmptyColor="{TestPageBackend.ProgBgColor}"
 		     XYAlignment="Centered"
-		     Progress="0.4"/>
+		     ProgressValue="0.4"/>
 
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"

@@ -71,7 +71,7 @@
 		 - 
 		 
 		   
-		 # Unfinished Features/Known Issues (For V1):
+		 # Unfinished Features/Known Issues:
 		 (Any line indicated with (?) is just something I'm going to explore)
 		 
 		 ## New UIElements
@@ -81,6 +81,8 @@
 		 - RGB Color Picker
 		 - SearchBar
 		 - Graphs (Bar, Line(?))
+		 - Tree view
+		 - Slider
 		 
 		 ## Library Accessories
 		 - VS Extension (?)
@@ -98,6 +100,8 @@
 		 - Gradient helpers that return list of pixel colors for a given string length and colors
 		 - CWM disable title + status bar
 		 - CWM Add custom global controls
+		 - Unit Testing
+		 - Run over original UIElements and finish impl
 		 
 		 ## Known Issues
 		 - Some Default UIElements are unfinished, while all of them work some of them may have properties that

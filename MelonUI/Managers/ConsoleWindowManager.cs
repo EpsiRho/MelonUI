@@ -419,6 +419,9 @@ namespace MelonUI.Managers
             catch (Exception e)
             {
                 Debug.WriteLine(e.Message);
+                MainBuffer.WriteStringWrapped(0,0,e.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
+                MainBuffer.RenderToConsole(output);
+                FrameRendered?.Invoke(this, EventArgs.Empty);
             }
         }
 

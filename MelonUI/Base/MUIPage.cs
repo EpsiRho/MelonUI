@@ -19,10 +19,11 @@ namespace MelonUI.Base
         public List<string> Backends = new List<string>();
         public Dictionary<string, object> BackendObjects = new Dictionary<string, object>();
 
-        public override bool ConsiderForFocus { get; set; } = false;
         private int zCounter = 0;
 
-        public MUIPage() { }
+        public MUIPage() {
+            ConsiderForFocus = false;
+        }
 
 
         // Public Methods
@@ -1057,7 +1058,10 @@ namespace MelonUI.Base
                     buffer.WriteBuffer(element.ActualX, element.ActualY, elementBuffer);
                 }
             }
-            catch { }
+            catch(Exception e) 
+            {
+                buffer.WriteStringWrapped(0, 0, e.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
+            }
         }
 
 

@@ -1,4 +1,5 @@
-﻿using MelonUI.Base;
+﻿using MelonUI.Attributes;
+using MelonUI.Base;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -8,56 +9,29 @@ using System.Threading.Tasks;
 
 namespace MelonUI.Default
 {
-    public class ProgressBar : UIElement
+    public partial class ProgressBar : UIElement
     {
-        private object _progress = 0f;
-        public float Progress
-        {
-            get => (float)GetBoundValue(nameof(Progress), _progress);
-            set => SetBoundValue(nameof(Progress), Math.Clamp(value, 0f, 1f), ref _progress);
-        }
-        public int LoadingPlace = 0;
+        [Binding]
+        private float progressValue = 0f;
+        [Binding]
+        private string text = "";
+
         public float? PreviousProgress { get; private set; }
+        public int LoadingPlace = 0;
         public DateTime LastUpdate { get; private set; }
         private bool flip = false;
 
         // Customization options
-        private object _Text = "";
-        public string Text
-        {
-            get => (string)GetBoundValue(nameof(Text), _Text);
-            set => SetBoundValue(nameof(Text), value, ref _Text);
-        }
-        private object _ShowPercentage = false;
-        public bool ShowPercentage
-        {
-            get => (bool)GetBoundValue(nameof(ShowPercentage), _ShowPercentage);
-            set => SetBoundValue(nameof(ShowPercentage), value, ref _ShowPercentage);
-        }
-        private object _AnimateProgress = false;
-        public bool AnimateProgress
-        {
-            get => (bool)GetBoundValue(nameof(AnimateProgress), _AnimateProgress);
-            set => SetBoundValue(nameof(AnimateProgress), value, ref _AnimateProgress);
-        }
-        private object _Style = ProgressBarStyle.Solid;
-        public ProgressBarStyle Style
-        {
-            get => (ProgressBarStyle)GetBoundValue(nameof(Style), _Style);
-            set => SetBoundValue(nameof(Style), value, ref _Style);
-        }
-        private object _ProgressColor = Color.Green;
-        public Color ProgressColor
-        {
-            get => (Color)GetBoundValue(nameof(ProgressColor), _ProgressColor);
-            set => SetBoundValue(nameof(ProgressColor), value, ref _ProgressColor);
-        }
-        private object _EmptyColor = Color.DarkGray;
-        public Color EmptyColor
-        {
-            get => (Color)GetBoundValue(nameof(EmptyColor), _EmptyColor);
-            set => SetBoundValue(nameof(EmptyColor), value, ref _EmptyColor);
-        }
+        [Binding]
+        private bool showPercentage = false;
+        [Binding]
+        private bool animateProgress = false;
+        [Binding]
+        private ProgressBarStyle style = ProgressBarStyle.Solid;
+        [Binding]
+        private Color progressColor = Color.Green;
+        [Binding]
+        private Color emptyColor = Color.DarkGray;
 
         public enum ProgressBarStyle
         {
@@ -91,7 +65,7 @@ namespace MelonUI.Default
             int contentWidth = ActualWidth - 1;
             int contentHeight = ShowPercentage ? ActualHeight - 2 : ActualHeight - 1;
 
-            var currentProgress = Progress;
+            var currentProgress = ProgressValue;
 
             // Draw the text/percentage above the progress bar if we have enough height
             if (contentHeight >= 2)
@@ -152,19 +126,19 @@ namespace MelonUI.Default
             }
 
             // Store the current progress for animation
-            if (Progress != PreviousProgress)
+            if (ProgressValue != PreviousProgress)
             {
-                PreviousProgress = Progress;
+                PreviousProgress = ProgressValue;
                 LastUpdate = DateTime.Now;
             }
 
             if(Style == ProgressBarStyle.Loading)
             {
                 ShowPercentage = false;
-                Progress += 0.01f;
-                if(Progress >= 0.04f)
+                ProgressValue += 0.01f;
+                if(ProgressValue >= 0.04f)
                 {
-                    Progress = 0;
+                    ProgressValue = 0;
                     LoadingPlace = flip ? LoadingPlace - 1 : LoadingPlace + 1;
                 }
                 if (LoadingPlace >= progressWidth)
