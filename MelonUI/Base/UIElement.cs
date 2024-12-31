@@ -1,4 +1,4 @@
-﻿using MelonUI.Attributes;
+using MelonUI.Attributes;
 using MelonUI.Enums;
 using MelonUI.Managers;
 using System;
@@ -140,7 +140,7 @@ namespace MelonUI.Base
         /// <summary>
         /// Sets the bound value or the local value.
         /// </summary>
-        protected void SetBoundValue(string propertyName, object value, ref dynamic localStorage)
+        protected void SetBoundValue(string propertyName, T value, ref T localStorage)
         {
             if (_bindings.TryGetValue(propertyName, out var binding))
             {
