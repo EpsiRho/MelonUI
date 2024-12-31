@@ -140,7 +140,7 @@ namespace MelonUI.Base
         /// <summary>
         /// Sets the bound value or the local value. ?
         /// </summary>
-        protected void SetBoundValue(string propertyName, T value, ref T localStorage)
+        protected void SetBoundValue<T>(string propertyName, T value, ref T localStorage)
         {
             if (_bindings.TryGetValue(propertyName, out var binding))
             {
