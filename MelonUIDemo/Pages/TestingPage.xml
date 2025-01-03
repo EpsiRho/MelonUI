@@ -17,17 +17,14 @@
 
 	<Line X="0"
 		  ShowBorder="true"
+		  AntiAliased="true"
+		  LineWidth="6"
+		  RoundCaps="false"
+		  Softness="2"
+		  Intensity="1"
 		  Y="13%"
 		  X1="{TestPageBackend.CurX1}" Y1="{TestPageBackend.CurY1}"
 		  X2="{TestPageBackend.CurX2}" Y2="{TestPageBackend.CurY2}"
-		  Width="95%"
-		  Height="80%"/>
-<Line X="0"
-		  ShowBorder="true"
-		  Y="13%"
-		  X1="{TestPageBackend.CurX2}" Y1="{TestPageBackend.CurY1}"
-		  X2="{TestPageBackend.CurX1}" Y2="{TestPageBackend.CurY2}"
-RespectBackgroundOnDraw="false"
 		  Width="95%"
 		  Height="80%"/>
 

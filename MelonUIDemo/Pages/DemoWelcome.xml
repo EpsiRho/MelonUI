@@ -76,6 +76,7 @@
 		 
 		 ## New UIElements
 		 - Line
+		 - Breadcrumb Bar
 		 - MultiLine TextBox / Editable Listbox
 		 - Box Shadow (?)
 		 - RGB Color Picker
@@ -102,7 +103,7 @@
 		 - CWM Add custom global controls
 		 - Unit Testing
 		 - Run over original UIElements and finish impl
-		 - Make UIElement Background transparency work correctly everywhere pls
+		 (COMPLETE) Make UIElement Background transparency work correctly everywhere pls
 		 
 		 ## Known Issues
 		 - Some Default UIElements are unfinished, while all of them work some of them may have properties that

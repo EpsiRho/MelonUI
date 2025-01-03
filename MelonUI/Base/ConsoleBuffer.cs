@@ -49,7 +49,7 @@ namespace MelonUI.Base
 
         public void Clear(Color background)
         {
-            var emptyPixel = new ConsolePixel(' ', Color.White, background, false);
+            var emptyPixel = new ConsolePixel(' ', Color.Transparent, Color.Transparent, false);
             for (int y = 0; y < Height; y++)
                 for (int x = 0; x < Width; x++)
                 {
@@ -214,7 +214,7 @@ namespace MelonUI.Base
                     for (int tx = startX, sx = startX - x; tx < endX; tx++, sx++)
                     {
                         var sourcePixel = source.Buffer[sy, sx];
-                        if (sourcePixel.Background.A != 0)
+                        if (sourcePixel.Background.A != 0 || sourcePixel.Foreground.A != 0)
                         {
                             Buffer[ty, tx] = sourcePixel;
                         }
@@ -224,30 +224,7 @@ namespace MelonUI.Base
         }
 
 
-        public void WriteFrame(int x, int y, string text, Color foreground, Color background, bool border = true)
-        {
-            if (border)
-            {
-                // Draw border
-                SetPixel(x, y, '┌', foreground, background);
-                SetPixel(x + text.Length + 1, y, '┐', foreground, background);
-                SetPixel(x, y + 2, '└', foreground, background);
-                SetPixel(x + text.Length + 1, y + 2, '┘', foreground, background);
-
-                for (int i = 1; i <= text.Length; i++)
-                {
-                    SetPixel(x + i, y, '─', foreground, background);
-                    SetPixel(x + i, y + 2, '─', foreground, background);
-                }
-
-                SetPixel(x, y + 1, '│', foreground, background);
-                SetPixel(x + text.Length + 1, y + 1, '│', foreground, background);
-            }
-
-            // Draw text
-            WriteString(x + 1, y + 1, text, foreground, background);
-        }
-
+        
         public void FillRect(int x, int y, int width, int height, char c, Color foreground, Color background)
         {
             for (int cy = y; cy < y + height && cy < Height; cy++)

@@ -21,5 +21,9 @@ namespace MelonUI.Base
             Background = background;
             IsWide = isWide;
         }
+        public override string ToString()
+        {
+            return $"{Character},{Foreground},{Background},{IsWide}";
+        }
     }
 }

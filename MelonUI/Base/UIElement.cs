@@ -213,8 +213,8 @@ namespace MelonUI.Base
         public virtual void CalculateLayout(int parentX, int parentY, int parentWidth, int parentHeight)
         {
             // Get inital X/Y
-            int parsedX = ParseRelativeValue(X, parentWidth) + parentX;
-            int parsedY = ParseRelativeValue(Y, parentHeight) + parentY;
+            int parsedX = ParseRelativeValue(X, parentWidth);
+            int parsedY = ParseRelativeValue(Y, parentHeight);
 
             // Get Min W/H
             ActualMinWidth = Math.Max(0, ParseRelativeValue(MinWidth, parentWidth));

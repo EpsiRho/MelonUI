@@ -16,7 +16,7 @@ namespace MelonUI.Managers
 {
     public class ConsoleWindowManager
     {
-        private List<UIElement> RootElements = new List<UIElement>();
+        public List<UIElement> RootElements = new();
         public UIElement FocusedElement;
         private ConsoleBuffer MainBuffer;
         public event EventHandler FrameRendered;

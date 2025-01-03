@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
@@ -12,12 +13,13 @@ namespace MelonUI.Base
     public class MUIPage : UIElement
     {
         public string MXML { get; set; }
-        private readonly List<Assembly> Assemblies = new List<Assembly>();
-        private readonly List<string> Namespaces = new List<string>();
+        private readonly List<Assembly> Assemblies = new();
+        private readonly List<string> Namespaces = new();
         public bool Failed = false;
-        public List<string> CompilerMessages = new List<string>();
-        public List<string> Backends = new List<string>();
-        public Dictionary<string, object> BackendObjects = new Dictionary<string, object>();
+        public List<string> CompilerMessages = new();
+        public List<string> Backends = new();
+        public Dictionary<string, object> BackendObjects = new();
+        private Dictionary<UIElement, ConsoleBuffer> BufferCache = new();
 
         private int zCounter = 0;
 
@@ -1033,6 +1035,37 @@ namespace MelonUI.Base
         }
 
         // Render Page Elements
+        public void RemoveElement(UIElement element)
+        {
+            int idx = Children.IndexOf(element);
+            if (idx == -1)
+            {
+                return;
+            }
+            Children.RemoveAt(idx);
+            if (ParentWindow.FocusedElement != null && ParentWindow.FocusedElement.Equals(element) && ParentWindow.RootElements.Count() >= 1)
+            {
+                ParentWindow.FocusedElement = ParentWindow.RootElements.OrderByDescending(x => x.Z).FirstOrDefault();
+                ParentWindow.FocusedElement.IsFocused = true;
+            }
+
+            int count = 0;
+            foreach (var elm in ParentWindow.RootElements.OrderBy(x => x.Z))
+            {
+                elm.Z = count;
+                count++;
+            }
+
+            if (ParentWindow.HighestZ == element.Z)
+            {
+                var item = ParentWindow.RootElements.OrderByDescending(e => e.Z).FirstOrDefault();
+                if (item == null)
+                {
+                    ParentWindow.HighestZ = 0;
+                }
+            }
+
+        }
         protected override void RenderContent(ConsoleBuffer buffer)
         {
             if (!IsVisible) return;
@@ -1044,19 +1077,68 @@ namespace MelonUI.Base
 
             try
             {
-                var buffers = new List<(UIElement element, ConsoleBuffer buffer)>();
-                foreach (var pos in Children.Where(x => x.IsVisible))
+                // Calculate layouts and render elements
+                var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();
+                var delElms = Children.Where(e => e.RenderThreadDeleteMe);
+                foreach (var item in delElms)
                 {
-                    pos.CalculateLayout(startXOffset, startYOffset, innerWidth, innerHeight);
-                    var elementBuffer = pos.Render();
-                    buffers.Add((pos, elementBuffer));
+                    RemoveElement(item);
                 }
+                var visibleElms = Children.Where(x => x.IsVisible).ToList();
+                Parallel.ForEach(visibleElms, (element) =>
+                {
+                    ConsoleBuffer elementBuffer = null;
 
-                var ordered = buffers.OrderBy(e => e.element.Z).ToList();
-                foreach (var (element, elementBuffer) in ordered)
+                    if (element.NeedsRecalculation)
+                    {
+                        element.CalculateLayout(startXOffset, startYOffset, innerWidth, innerHeight);
+                        elementBuffer = element.Render();
+
+                        if (element.EnableCaching)
+                        {
+                            lock (BufferCache)
+                            {
+                                BufferCache[element] = elementBuffer;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        bool bufferFound = false;
+                        if (element.EnableCaching)
+                        {
+                            lock (BufferCache)
+                            {
+                                if (BufferCache.TryGetValue(element, out elementBuffer))
+                                {
+                                    bufferFound = true;
+                                }
+                            }
+                        }
+
+                        if (!bufferFound)
+                        {
+                            element.CalculateLayout(startXOffset, startYOffset, innerWidth, innerHeight);
+                            elementBuffer = element.Render();
+
+                            if (element.EnableCaching)
+                            {
+                                lock (BufferCache)
+                                {
+                                    BufferCache[element] = elementBuffer;
+                                }
+                            }
+                        }
+                    }
+
+                    objectBuffers.Add((elementBuffer, element));
+                });
+
+                var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
+                foreach (var element in lst)
                 {
-                    buffer.WriteBuffer(element.ActualX, element.ActualY, elementBuffer);
-                }
+                    buffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
+                };
             }
             catch(Exception e) 
             {
