@@ -12,19 +12,11 @@ namespace MelonUI.Default
     {
         [Binding]
         private string text;
+        [Binding]
 
-        private object _TextAlignment = Alignment.TopLeft;
-        public Alignment TextAlignment
-        {
-            get => (Alignment)GetBoundValue(nameof(TextAlignment), _TextAlignment);
-            set => SetBoundValue(nameof(TextAlignment), value, ref _TextAlignment);
-        }
-        private object _SizeBasedOnText = false;
-        public bool SizeBasedOnText
-        {
-            get => (bool)GetBoundValue(nameof(SizeBasedOnText), _SizeBasedOnText);
-            set => SetBoundValue(nameof(SizeBasedOnText), value, ref _SizeBasedOnText);
-        }
+        private Alignment textAlignment = Alignment.TopLeft;
+        [Binding]
+        private bool sizeBasedOnText = false;
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {

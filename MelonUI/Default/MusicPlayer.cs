@@ -1,18 +1,23 @@
 ﻿using System;
 using System.Drawing;
+using MelonUI.Attributes;
 using MelonUI.Base;
 using MelonUI.Managers;
 
 namespace MelonUI.Default
 {
-    public class MusicPlayerElement : UIElement
+    public partial class MusicPlayerElement : UIElement
     {
-        private bool showControls = false;
+        [Binding]
+        public bool showControls = false;
+        [Binding]
         public bool showWaveform = false;
         private GridContainer waveformGrid;
         private PlaybackManager playbackManager;
         private ATL.Track trackMetadata;
+        [Binding]
         private float volumeCache = 0.1f;
+        [Binding]
         private string filename = "";
 
         public MusicPlayerElement(PlaybackManager manager)

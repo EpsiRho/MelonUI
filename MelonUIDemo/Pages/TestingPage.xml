@@ -1,0 +1,34 @@
+﻿<MUIPage Width="99%"
+		 Height="93%"
+		 Name="TestingPage"
+		 Assemblies="MelonUI,MelonUIDemo"
+		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing"
+		 Backends="TestPageBackend">
+	<TextBlock Text="{TestPageBackend.CurrentPosStr}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="1,255,0,0"
+		   TextAlignment="TopLeft"
+		   XYAlignment="TopLeft"
+		   Width="30%"
+		   Height="12%">
+
+	</TextBlock>
+
+	<Line X="0"
+		  ShowBorder="true"
+		  Y="13%"
+		  X1="{TestPageBackend.CurX1}" Y1="{TestPageBackend.CurY1}"
+		  X2="{TestPageBackend.CurX2}" Y2="{TestPageBackend.CurY2}"
+		  Width="95%"
+		  Height="80%"/>
+<Line X="0"
+		  ShowBorder="true"
+		  Y="13%"
+		  X1="{TestPageBackend.CurX2}" Y1="{TestPageBackend.CurY1}"
+		  X2="{TestPageBackend.CurX1}" Y2="{TestPageBackend.CurY2}"
+RespectBackgroundOnDraw="false"
+		  Width="95%"
+		  Height="80%"/>
+
+</MUIPage>

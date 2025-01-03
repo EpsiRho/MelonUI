@@ -1,4 +1,5 @@
-﻿using MelonUI.Base;
+﻿using MelonUI.Attributes;
+using MelonUI.Base;
 using MelonUI.Enums;
 using MelonUI.Helpers;
 using System;
@@ -122,34 +123,30 @@ namespace MelonUI.Default
             return $"{elapsed.Minutes:00}:{elapsed.Seconds:00}:{elapsed.Milliseconds:00}";
         }
     }
-    public class WorkLog : UIElement
+    public partial class WorkLog : UIElement
     {
-        public Color RunningForeground { get; set; } = Color.FromArgb(255, 33, 165, 255);
-        public Color WaitingForeground { get; set; } = Color.FromArgb(255, 105, 105, 105);
-        public Color ErroredForeground { get; set; } = Color.FromArgb(255, 255, 32, 32);
-        public Color CompletedForeground { get; set; } = Color.FromArgb(255, 32, 255, 108);
-        private LockedList<WorkItem> Tasks;
+        [Binding]
+        private Color runningForeground = Color.FromArgb(255, 33, 165, 255);
+        [Binding]
+        private Color waitingForeground = Color.FromArgb(255, 105, 105, 105);
+        [Binding]
+        private Color erroredForeground = Color.FromArgb(255, 255, 32, 32);
+        [Binding]
+        private Color completedForeground = Color.FromArgb(255, 32, 255, 108);
+        [Binding]
+        private LockedList<WorkItem> tasks;
+        [Binding]
         private int _visibleStartIndex;
-        public int VisibleStartIndex
-        {
-            get
-            {
-                return _visibleStartIndex;
-            }
-            set
-            {
-                if (value != _visibleStartIndex && value != -1)
-                {
-                    _visibleStartIndex = value;
-                }
-            }
-        }
         private int _totalLines;
 
-        public bool ShowStatus { get; set; } = true;
-        public bool ShowTime { get; set; } = true;
-        public bool ShowProgressBar { get; set; } = false;
-        public bool ShowItemCount { get; set; } = false;
+        [Binding]
+        private bool showStatus = true;
+        [Binding]
+        private bool showTime = true;
+        [Binding]
+        private bool showProgressBar  = false;
+        [Binding]
+        private bool showItemCount = false;
 
         public WorkLog(LockedList<WorkItem> tasks)
         {

@@ -1,12 +1,15 @@
-﻿using MelonUI.Base;
+﻿using MelonUI.Attributes;
+using MelonUI.Base;
 using System;
 
 namespace MelonUI.Default
 {
-    public class Button : UIElement
+    public partial class Button : UIElement
     {
-        public string Text { get; set; } = "";
-        public event Action OnPressed;
+        [Binding]
+        public string text = "";
+        [Binding]
+        public Action onPressed;
         public readonly ConsoleKey _key;
 
         public Button(ConsoleKey key)

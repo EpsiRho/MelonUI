@@ -3,20 +3,18 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using MelonUI.Attributes;
 using MelonUI.Base;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace MelonUI.Default
 {
-    public class MenuItem : UIElement
+    public partial class MenuItem : UIElement
     {
-        private object _Option;
-        public string Option
-        {
-            get => (string)GetBoundValue(nameof(Option), _Option);
-            set => SetBoundValue(nameof(Option), value, ref _Option);
-        }
-        public Action OnSelect { get; set; }
+        [Binding]
+        private string _Option;
+        [Binding]
+        public Action onSelect;
         public MenuItem()
         {
 
@@ -32,20 +30,20 @@ namespace MelonUI.Default
             // Dont
         }
     }
-    public class OptionsMenu : UIElement
+    public partial class OptionsMenu : UIElement
     {
-        private object _Options;
-        public List<MenuItem> Options
-        {
-            get => (List<MenuItem>)GetBoundValue(nameof(Options), _Options);
-            set => SetBoundValue(nameof(Options), value, ref _Options);
-        }
-        public string MenuName { get; set; } = "";
-        public bool UseStatusBar { get; set; }
+        [Binding]
+        private List<MenuItem> _Options;
+        [Binding]
+        public string menuName = "";
+        [Binding]
+        public bool useStatusBar;
         private int _currentIndex;
         private int _scrollOffset;
-        public Color SelectedForeground { get; set; } = Color.Cyan;
-        public Color SelectedBackground { get; set; } = Color.FromArgb(255, 80, 80, 80);
+        [Binding]
+        public Color selectedForeground = Color.Cyan;
+        [Binding]
+        public Color selectedBackground = Color.FromArgb(255, 80, 80, 80);
 
         public OptionsMenu()
         {

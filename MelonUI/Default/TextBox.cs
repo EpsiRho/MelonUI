@@ -1,4 +1,5 @@
-﻿using MelonUI.Base;
+﻿using MelonUI.Attributes;
+using MelonUI.Base;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -9,27 +10,15 @@ using System.Threading.Tasks;
 
 namespace MelonUI.Default
 {
-    public class TextBox : UIElement
+    public partial class TextBox : UIElement
     {
-        public object _Text = "";
-        public string Text
-        {
-            get => (string)GetBoundValue(nameof(Text), _Text);
-            set => SetBoundValue(nameof(Text), value, ref _Text);
-        }
-        public object _Label = "";
-        public string Label
-        {
-            get => (string)GetBoundValue(nameof(Label), _Label);
-            set => SetBoundValue(nameof(Label), value, ref _Label);
-        }
+        [Binding]
+        private string text = "";
+        [Binding]
+        private string label = "";
         public int CursorPosition { get; private set; } = 0;
-        public object _HiddenCharacter = '*';
-        public char HiddenCharacter
-        {
-            get => (char)GetBoundValue(nameof(HiddenCharacter), _HiddenCharacter);
-            set => SetBoundValue(nameof(HiddenCharacter), value, ref _HiddenCharacter);
-        }
+        [Binding]
+        public char hiddenCharacter = '*';
         private object _HideCharacters;
         public bool HideCharacters
         {
@@ -43,22 +32,18 @@ namespace MelonUI.Default
                 IsCharactersHidden = value;
             }
         }
-        private bool IsCharactersHidden { get; set; } = false;
-        public Color CursorColorForeground { get; set; } = Color.Cyan;
-        public Color CursorColorBackground { get; set; } = Color.Gray;
-        public object _OnTextChanged;
-        public Action<string, TextBox> OnTextChanged
-        {
-            get => (Action<string, TextBox>)GetBoundValue(nameof(OnTextChanged), _OnTextChanged);
-            set => SetBoundValue(nameof(OnTextChanged), value, ref _OnTextChanged);
-        }
-        public object _OnEnter;
-        public Action<string, TextBox> OnEnter
-        {
-            get => (Action<string, TextBox>)GetBoundValue(nameof(OnEnter), _OnEnter);
-            set => SetBoundValue(nameof(OnEnter), value, ref _OnEnter);
-        }
-        public Action EnterHit { get; set; }
+        [Binding]
+        private bool isCharactersHidden = false;
+        [Binding]
+        private Color cursorColorForeground = Color.Cyan;
+        [Binding]
+        private Color cursorColorBackground = Color.Gray;
+        [Binding]
+        private Action<string, TextBox> onTextChanged;
+        [Binding]
+        public Action<string, TextBox> onEnter;
+        [Binding]
+        public Action enterHit;
         private int _scrollOffset = 0;
         private const int SCROLL_MARGIN = 2;
 

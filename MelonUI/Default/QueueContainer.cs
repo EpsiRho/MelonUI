@@ -1,4 +1,5 @@
-﻿using MelonUI.Base;
+﻿using MelonUI.Attributes;
+using MelonUI.Base;
 using MelonUI.Enums;
 using MelonUI.Managers;
 using System;
@@ -8,10 +9,12 @@ using System.Linq;
 using System.Runtime.ConstrainedExecution;
 namespace MelonUI.Default
 {
-    public class QueueContainer : UIElement
+    public partial class QueueContainer : UIElement
     {
-        public Direction StackDirection { get; set; } = Direction.Right;
-        public int MaxStackDisplaySize = 5;
+        [Binding]
+        private Direction stackDirection = Direction.Right;
+        [Binding]
+        public int maxStackDisplaySize = 5;
         public ConsoleWindowManager _parentWindow;
         public override ConsoleWindowManager ParentWindow
         {

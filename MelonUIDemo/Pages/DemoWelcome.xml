@@ -91,7 +91,7 @@
 		 
 		 ## MXML
 		 - MUIPage mxml parsing (Placing a MUIpages in MXML and parsing it to a MUIPage object)
-		 - [Binding] attribute and source code generation
+		 (COMPLETE) [Binding] attribute and source code generation
 		 - More verbose (and control over level of) compiler messages (only errors for now)
 		 - Compiler type converter extensions (Add your own custom type/unsupported type and a function
 											   to convert to add compiler support gaps or fine tuned support)
@@ -102,6 +102,7 @@
 		 - CWM Add custom global controls
 		 - Unit Testing
 		 - Run over original UIElements and finish impl
+		 - Make UIElement Background transparency work correctly everywhere pls
 		 
 		 ## Known Issues
 		 - Some Default UIElements are unfinished, while all of them work some of them may have properties that

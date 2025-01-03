@@ -1,4 +1,5 @@
-﻿using MelonUI.Base;
+﻿using MelonUI.Attributes;
+using MelonUI.Base;
 using MelonUI.Helpers;
 using System;
 using System.Collections.Generic;
@@ -8,18 +9,23 @@ using System.Threading.Tasks;
 
 namespace MelonUI.Default
 {
-    public class Waveform : UIElement
+    public partial class Waveform : UIElement
     {
-        public float scaleAmmount = 5.0f;
-        public int samplesPerSecond = 60;
-        public float windowsize = 0.7f;
-        public PlaybackManager pbManager;
-        public float[] waveform;
+        [Binding]
+        private float scaleAmmount = 5.0f;
+        [Binding]
+        private int samplesPerSecond = 60;
+        [Binding]
+        private float windowsize = 0.7f;
+        [Binding]
+        private PlaybackManager pbManager;
+        [Binding]
+        private float[] waveformData;
         public Waveform(PlaybackManager manager)
         {
             pbManager = manager;
             // Generate the entire waveform once
-            waveform = WaveFormer.GenerateWholeWaveform(pbManager.FilePath, samplesPerSecond);
+            WaveformData = WaveFormer.GenerateWholeWaveform(pbManager.FilePath, samplesPerSecond);
             EnableCaching = false;
             NeedsRecalculation = true;
         }
@@ -87,10 +93,10 @@ namespace MelonUI.Default
                     for (int i = 0; i < width; i++)
                     {
                         int index = startIndex + (int)(i * samplesPerPixel);
-                        if (index >= waveform.Length)
-                            index = waveform.Length - 1;
+                        if (index >= WaveformData.Length)
+                            index = WaveformData.Length - 1;
 
-                        waveformSegment[i] = waveform[index];
+                        waveformSegment[i] = WaveformData[index];
                     }
                 }
                 else

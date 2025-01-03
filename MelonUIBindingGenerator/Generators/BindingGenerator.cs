@@ -8,7 +8,7 @@ using System.Text;
 
 namespace MelonUIBindingGenerator.Generators;
 
-#pragma warning disable RS1035 // "Do not use banned APIs for analyzers" But I want to.
+//#pragma warning disable RS1035 // "Do not use banned APIs for analyzers" But I want to.
 
 [Generator]
 public class BindingGenerator : IIncrementalGenerator
@@ -29,6 +29,14 @@ public class BindingGenerator : IIncrementalGenerator
     private static bool IsBindingField(SyntaxNode node) =>
         node is FieldDeclarationSyntax field &&
         field.AttributeLists.Any(al => al.Attributes
+            .Any(a => a.Name.ToString() == "Binding"))
+        || 
+        node is PropertyDeclarationSyntax prop &&
+        prop.AttributeLists.Any(al => al.Attributes
+            .Any(a => a.Name.ToString() == "Binding"))
+        ||
+        node is EventDeclarationSyntax evnt &&
+        evnt.AttributeLists.Any(al => al.Attributes
             .Any(a => a.Name.ToString() == "Binding"));
 
     private static FieldInfo? GetBindingField(GeneratorSyntaxContext context)
@@ -62,7 +70,7 @@ public class BindingGenerator : IIncrementalGenerator
             fieldDeclaration.Modifiers.ToString(),
             usings);
 
-        File.WriteAllLines($"C:/Users/jhset/Desktop/cock.cs", usings);
+        //File.WriteAllLines($"C:/Users/jhset/Desktop/GeneratorTesting/cock.cs", usings);
 
         return fi;
     }
@@ -76,8 +84,7 @@ public class BindingGenerator : IIncrementalGenerator
             propName = propName.Substring(1);
         }
         string propPublic = $"{propName[0].ToString().ToUpper()}{propName.Substring(1)}";
-        var usingsText = string.Join(Environment.NewLine, field.Usings);
-        File.WriteAllText($"C:/Users/jhset/Desktop/wahy.cs", propPublic);
+        var usingsText = string.Join("\n", field.Usings);
         string source = "";
         if(field.PropertyType == "string")
         {
@@ -128,7 +135,7 @@ namespace {field.Namespace}
         context.AddSource(
             $"{field.ClassName}.{field.PropertyName}.g.cs",
             source);
-        File.WriteAllText($"C:/Users/jhset/Desktop/{field.ClassName}.{field.PropertyName}.g.cs", source);
+        //File.WriteAllText($"C:/Users/jhset/Desktop/GeneratorTesting/{field.ClassName}.{field.PropertyName}.g.cs", source);
     }
 }
 

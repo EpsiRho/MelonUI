@@ -3,20 +3,24 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using MelonUI.Attributes;
 using MelonUI.Base;
 
 namespace MelonUI.Default
 {
-    public class FilePicker : UIElement
+    public partial class FilePicker : UIElement
     {
         private DirectoryInfo _currentDirectory;
         private List<FileSystemInfo> _entries;
         private int _currentIndex;
         private int _scrollOffset;
-        public Action OnDirectorySelected;
-        public Action OnFileSelected;
+        [Binding]
+        public Action onDirectorySelected;
+        [Binding]
+        public Action onFileSelected;
 
-        public string Path { get; private set; }
+        [Binding]
+        public string path;
 
         public FilePicker(string dir = null)
         {

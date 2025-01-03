@@ -35,5 +35,12 @@ namespace MelonUIDemo.Testing
         {
             return true;
         }
+
+        // Line Testing
+        public static string CurrentPosStr { get; set; } = "Point A = (0,0)\nPoint B = (0,0)";
+        public static string CurX1 { get; set; } = "0";
+        public static string CurY1 { get; set; } = "0";
+        public static string CurX2 { get; set; } = "0";
+        public static string CurY2 { get; set; } = "0";
     }
 }

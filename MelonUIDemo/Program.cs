@@ -42,9 +42,65 @@ else
 CancellationTokenSource CancelSource = new CancellationTokenSource();
 DemoWelcomeBackend.CWM.ManageConsole(CancelSource.Token);
 
+bool XLeft = false;
+bool XRight = true;
+bool YUp = false;
+bool YDown = false;
+
+int CurX1 = 90;
+int CurY1 = 90;
+
+int CurX2 = 10;
+int CurY2 = 10;
+
 while (true) 
 {
-    Thread.Sleep(1000);
+    TestPageBackend.CurX1 = $"{CurX1}%";
+    TestPageBackend.CurY1 = $"{CurY1}%";
+    TestPageBackend.CurX2 = $"{CurX2}%";
+    TestPageBackend.CurY2 = $"{CurY2}%";
+    if (XRight)
+    {
+        CurX2++;
+        CurX1--;
+        if (CurX2 >= 85)
+        {
+            XRight = false;
+            YDown = true;
+        }
+    }
+    else if (XLeft)
+    {
+        CurX2--;
+        CurX1++;
+        if (CurX2 <= 10)
+        {
+            XLeft = false;
+            YUp = true;
+        }
+    }
+    else if (YUp)
+    {
+        CurY2--;
+        CurY1++;
+        if (CurY2 <= 10)
+        {
+            YUp = false;
+            XRight = true;
+        }
+    }
+    else if (YDown)
+    {
+        CurY2++;
+        CurY1--;
+        if (CurY2 >= 85)
+        {
+            YDown = false;
+            XLeft = true;
+        }
+    }
+    TestPageBackend.CurrentPosStr = $"Position A: ({TestPageBackend.CurX1},{TestPageBackend.CurY1})\nPosition B: ({TestPageBackend.CurX2},{TestPageBackend.CurY2})";
+    Thread.Sleep(20);
 }
 
 return;

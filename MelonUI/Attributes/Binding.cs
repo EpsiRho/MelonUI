@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace MelonUI.Attributes
 {
-    [AttributeUsage(AttributeTargets.Field)]
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property | AttributeTargets.Event)]
     public class BindingAttribute : Attribute
     {
         public BindingAttribute()
