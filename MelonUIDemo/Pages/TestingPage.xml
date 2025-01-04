@@ -1,13 +1,8 @@
-﻿<MUIPage Width="99%"
-		 Height="93%"
-		 Name="TestingPage"
-		 Assemblies="MelonUI,MelonUIDemo"
-		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing"
-		 Backends="TestPageBackend">
+﻿<MUIPage Name="TestingPage">
 	<TextBlock Text="{TestPageBackend.CurrentPosStr}"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,0,0"
+		   FocusedForeground="255,0,0"
 		   TextAlignment="TopLeft"
 		   XYAlignment="TopLeft"
 		   Width="30%"

@@ -582,6 +582,10 @@ namespace MelonUI.Managers
                     catch (Exception ex)
                     {
                         //TODO: Logging
+                        Debug.WriteLine(ex.Message);
+                        MainBuffer.WriteStringWrapped(0, 0, ex.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
+                        MainBuffer.RenderToConsole(output);
+                        FrameRendered?.Invoke(this, EventArgs.Empty);
                     }
                 }
             });
@@ -596,6 +600,10 @@ namespace MelonUI.Managers
                     catch (Exception ex)
                     {
                         //TODO: Logging
+                        Debug.WriteLine(ex.Message);
+                        MainBuffer.WriteStringWrapped(0, 0, ex.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
+                        MainBuffer.RenderToConsole(output);
+                        FrameRendered?.Invoke(this, EventArgs.Empty);
                     }
                 }
             });

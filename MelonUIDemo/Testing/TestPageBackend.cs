@@ -18,7 +18,7 @@ namespace MelonUIDemo.Testing
         public static Func<ConsoleKeyInfo, bool> IsAnyLetter { get; set; } = IsThereAnyLetter;
         public static Color LineColor { get; set; } = Color.FromArgb(255,255,255,255);
         public static Color AntiLineColor { get; set; } = Color.FromArgb(255, 255, 255, 255);
-        public static string TestText { get; set; } = $"Oh wow a bunch of [Color(0,255,0)]text [Color(255,255,255)]being used to check if this alignment works";
+        public static string TestText { get; set; } = $"Oh wow a bunch of text being used to check if this alignment works";
         public static List<MenuItem> Items { get; set; } = new List<MenuItem>()
         {
             new MenuItem()

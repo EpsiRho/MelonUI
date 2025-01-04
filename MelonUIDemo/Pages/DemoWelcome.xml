@@ -71,19 +71,13 @@
 		 - 
 		 
 		   
-		 # Unfinished Features/Known Issues:
+		 # V1 Push:
 		 (Any line indicated with (?) is just something I'm going to explore)
 		 
 		 ## New UIElements
 		 (COMPLETE) Line
 		 - Breadcrumb Bar
-		 - MultiLine TextBox / Editable Listbox
-		 - Box Shadow (?)
 		 - RGB Color Picker
-		 - SearchBar
-		 - Graphs (Bar, Line(?))
-		 - Tree view
-		 - Slider
 		 
 		 ## Library Accessories
 		 - VS Extension (?)
@@ -91,25 +85,38 @@
 		 - LRCTool Demo (Porting my LRCTool over to MelonUI and releasing as it's own project)
 		 
 		 ## MXML
-		 - MUIPage mxml parsing (Placing a MUIpages in MXML and parsing it to a MUIPage object)
+		 (COMPLETE) MUIPage mxml parsing (Placing a MUIpages in MXML and parsing it to a MUIPage object)
 		 (COMPLETE) [Binding] attribute and source code generation
 		 (COMPLETE) More verbose (and control over level of) compiler messages (only errors for now)
-		 - Compiler type converter extensions (Add your own custom type/unsupported type and a function
+		 (COMPLETE) Compiler type converter extensions (Add your own custom type/unsupported type and a function
 											   to convert to add compiler support gaps or fine tuned support)
 		 
 		 ## Misc Library Stuff
 		 (COMPLETE) Gradient helpers that return list of pixel colors for a given string length and colors
 		 - Better Gradient Support in UIElements + MXML
+		   (COMPLETE) Ansi color string -> Colored ConsoleBuffer
+		   (COMPLETE) Support for Ansi color strings in TextBlock.Text
+		   - Support for Ansi color strings in other UIElements(?)
+		   
 		 (COMPLETE) CWM disable title + status bar
 		 (COMPLETE) CWM Add custom global controls
 		 - Unit Testing
 		 - Run over original UIElements and finish impl
+		 - Documentation
 		 (COMPLETE) Make UIElement Background transparency work correctly everywhere pls
 		 
 		 ## Known Issues
 		 - Some Default UIElements are unfinished, while all of them work some of them may have properties that
 		   do not, or are not fully implemented.
 		 - 
+		 
+		 ## Future Plans
+		 - MultiLine TextBox / Editable Listbox
+		 - Graphs (Bar, Line(?))
+		 - Box Shadow (?)
+		 - SearchBar
+		 - Tree view
+		 - Slider
 		 
 	-->
 	

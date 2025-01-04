@@ -1,11 +1,14 @@
-﻿using System;
+﻿using MelonUI.Base;
+using Pastel;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
-namespace MelonUI.Base
+namespace MelonUI.Helpers
 {
     public static class ParamParser
     {
@@ -40,7 +43,7 @@ namespace MelonUI.Base
             int length = 0;
             for (int i = 0; i < text.Length; i++)
             {
-                if (text[i] == '\x1b' && (i + 1) < text.Length && text[i + 1] == '[')
+                if (text[i] == '\x1b' && i + 1 < text.Length && text[i + 1] == '[')
                 {
                     i = text.IndexOf('m', i);
                     if (i == -1) break;
@@ -49,6 +52,17 @@ namespace MelonUI.Base
                 length++;
             }
             return length;
+        }
+        public static string GetGradientString(string input, Color[] colors)
+        {
+            string output = "";
+
+            for(int i = 0; i < input.Length; i++)
+            {
+                Color curColor = GetGradientColor(colors, (double)i / input.Length);
+                output += $"{input[i]}".Pastel(curColor);
+            }
+            return output;
         }
     }
 }

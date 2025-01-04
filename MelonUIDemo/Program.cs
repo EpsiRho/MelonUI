@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using MelonUI.Base;
 using MelonUIDemo.Backends;
 using Pastel;
+using MelonUI.Helpers;
 
 DemoWelcomeBackend.CWM = new ConsoleWindowManager();
 DemoWelcomeBackend.CWM.EnableTitleBar = true;
@@ -22,7 +23,8 @@ TextBlock tb = new TextBlock()
     Height = "50%",
 };
 
-string wpxml = File.ReadAllText(@"C:\Users\jhset\source\repos\MelonUIDemo\MelonUIDemo\Pages\DemoPage.xml");
+//string wpxml = File.ReadAllText(@"D:\Documents\GitHub\MelonUI\MelonUIDemo\Pages\DemoPage.xml");
+string wpxml = File.ReadAllText(@"C:\Users\jhset\Desktop\test.xml");
 var WelcomePage = new MUIPage();
 var wpcompiled = WelcomePage.Compile(wpxml);
 
@@ -33,111 +35,28 @@ Console.WriteLine("[Compiler Output]");
 var msg = WelcomePage.GetSimpleCompilerDisplay();
 Console.WriteLine($"{msg}");
 
-int w = Console.WindowWidth;
-while (true)
-{
-    if(w != Console.WindowWidth)
-    {
-        Console.Clear();
-        Console.WriteLine($"[Compiler Output ({w})]");
-        msg = WelcomePage.GetSimpleCompilerDisplay();
-        Console.WriteLine($"{msg}");
-        w = Console.WindowWidth;
-    }
-    Thread.Sleep(10);
-}
+TestPageBackend.TestText = ParamParser.GetGradientString(TestPageBackend.TestText, new[] { Color.FromArgb(255,255,50,50), Color.FromArgb(255, 0, 100, 255) });
 
-return;
-void Draw(List<CompilerMessage> lines)
-{
-    foreach (var line in lines)
-    {
-        Color pc = Color.White;
-        switch (line.Severity)
-        {
-            case MessageSeverity.Debug:
-                pc = Color.FromArgb(255, 120, 120, 120);
-                break;
-            case MessageSeverity.Info:
-                pc = Color.FromArgb(255, 255, 255, 255);
-                break;
-            case MessageSeverity.Warning:
-                pc = Color.FromArgb(255, 255, 255, 0);
-                break;
-            case MessageSeverity.Error:
-                pc = Color.FromArgb(255, 255, 0, 0);
-                break;
-            case MessageSeverity.Success:
-                pc = Color.FromArgb(255, 0, 255, 0);
-                break;
-        }
-        if (line == WelcomePage.CompilerFocusedMessage)
-        {
-            pc = Color.Cyan;
-        }
-        Console.WriteLine($"{line}".Pastel(pc));
-    }
-}
-
-Draw(WelcomePage.CompilerMessages);
-while (true)
-{
-    var k = Console.ReadKey(true);
-
-    Console.Clear();
-    if (k.Key == ConsoleKey.Escape)
-    {
-        break;
-    }
-    else if(k.Key == ConsoleKey.NumPad0)
-    {
-        Draw(WelcomePage.CompilerMessages); // 0 - All
-    }
-    else if (k.Key == ConsoleKey.NumPad1)
-    {
-        Draw(WelcomePage.CompilerMessages.Where(x=>x.Severity == MessageSeverity.Info || x.Severity == MessageSeverity.Warning || x.Severity == MessageSeverity.Error || x.Severity == MessageSeverity.Success).ToList()); // 1 - Info+
-    }
-    else if (k.Key == ConsoleKey.NumPad2)
-    {
-        Draw(WelcomePage.CompilerMessages.Where(x => x.Severity == MessageSeverity.Warning || x.Severity == MessageSeverity.Error || x.Severity == MessageSeverity.Success).ToList()); // 2 - Warnings+
-    }
-    else if (k.Key == ConsoleKey.NumPad3)
-    {
-        Draw(WelcomePage.CompilerMessages.Where(x => x.Severity == MessageSeverity.Error || x.Severity == MessageSeverity.Success).ToList()); // 3 - Errors+
-    }
-    else if (k.Key == ConsoleKey.NumPad4) 
-    {
-        Draw(WelcomePage.CompilerMessages.Where(x => x.Severity == MessageSeverity.Success).ToList()); // 4 - Success+
-    }
-    else if (k.Key == ConsoleKey.NumPad5)
-    {
-        Draw(WelcomePage.CompilerMessages.Where(x => x.Severity == MessageSeverity.Debug).ToList()); // 5 - Debug Only
-    }
-    else if (k.Key == ConsoleKey.NumPad6)
-    {
-        Draw(WelcomePage.CompilerMessages.Where(x => x.Severity == MessageSeverity.Info).ToList()); // 6 - Info Only
-    }
-    else if (k.Key == ConsoleKey.NumPad7)
-    {
-        Draw(WelcomePage.CompilerMessages.Where(x => x.Severity == MessageSeverity.Warning).ToList()); // 7 - Warnings Only
-    }
-    else if (k.Key == ConsoleKey.NumPad8)
-    {
-        Draw(WelcomePage.CompilerMessages.Where(x => x.Severity == MessageSeverity.Error).ToList()); // 8 - Errors Only
-    }
-}
-
-return;
 
 // Test Code
 if (!wpcompiled)
 {
     DemoWelcomeBackend.CWM.SetStatus("What have you done");
-    foreach (var line in WelcomePage.CompilerMessages)
+    int w = Console.WindowWidth;
+    while (true)
     {
-        tb.Text += $"{line}\n";
+        if (w != Console.WindowWidth)
+        {
+            Console.Clear();
+            Console.WriteLine($"[Compiler Output ({w})]");
+            msg = WelcomePage.GetSimpleCompilerDisplay();
+            Console.WriteLine($"{msg}");
+            w = Console.WindowWidth;
+        }
+        Thread.Sleep(10);
     }
-    DemoWelcomeBackend.CWM.AddElement(tb);
+
+    return;
 }
 else
 {

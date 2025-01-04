@@ -1,9 +1,11 @@
 ﻿using MelonUI.Attributes;
 using MelonUI.Base;
 using MelonUI.Enums;
+using MelonUI.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace MelonUI.Default
@@ -27,24 +29,51 @@ namespace MelonUI.Default
             int maxHeight = ActualHeight - (ShowBorder ? 1 : 0);
 
             // Parse the text with inline colors
-            var (plainText, colors) = ParseColorMarkup(Text);
+            //var (plainText, colors) = ParseColorMarkup(Text);
 
             // Wrap the text and colors together
-            var wrappedLines = WrapText(plainText, colors, maxWidth);
+            List<string> wrappedLines = new();
+            if (ContainsAnsiCodes(Text))
+            {
+                wrappedLines = WrapAnsiText(Text, maxWidth);
+            }
+            else
+            {
+                wrappedLines = WrapText(Text, maxWidth);
+            }
 
             // Calculate the vertical starting position for the entire block
             int startY = CalculateStartY(wrappedLines.Count, maxHeight);
 
             for (int i = 0; i < wrappedLines.Count && i + startY < maxHeight; i++)
             {
-                var (line, lineColors) = wrappedLines[i];
+                var line = wrappedLines[i];
                 int lineWidth = GetStringWidth(line);
                 int startX = CalculateStartX(lineWidth, maxWidth);
 
-                RenderColoredLine(buffer, startX, startY + i, line, lineColors, defaultFg, defaultBg);
+                RenderColoredLine(buffer, startX, startY + i, line, defaultFg, defaultBg);
             }
         }
 
+        public static bool ContainsAnsiCodes(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return false;
+
+            for (int i = 0; i < input.Length - 1; i++)
+            {
+                if (input[i] == '\x1B' && input[i + 1] == '[')
+                {
+                    int j = i + 2;
+                    while (j < input.Length && ((input[j] >= '0' && input[j] <= '9') || input[j] == ';'))
+                        j++;
+
+                    if (j < input.Length && input[j] == 'm')
+                        return true;
+                }
+            }
+            return false;
+        }
         public static List<(Color color, int startIndex, int endIndex)> ParseColors(string input)
         {
             const string markerStart = "[Color(";
@@ -62,6 +91,7 @@ namespace MelonUI.Default
                 // Find the end index of the marker
                 int endIndex = input.IndexOf(markerEnd, startIndex);
                 if (endIndex == -1) break; // Closing marker not found
+
 
                 // Calculate the indices for extracting the inner content
                 int innerStart = startIndex + markerStart.Length;
@@ -98,50 +128,9 @@ namespace MelonUI.Default
 
             return results;
         }
-
-        private (string PlainText, List<Color?> Colors) ParseColorMarkup(string text)
+        private List<string> WrapText(string text, int maxWidth)
         {
-            var plainText = text;
-            var colors = new Color?[text.Length];
-            Color? transparent = Color.FromArgb(0, 0, 0, 0);
-
-            int missing = 0;
-            try
-            {
-                var markers = ParseColors(text);
-                foreach (var match in markers)
-                {
-                    int tagIndex = match.startIndex;
-                    int length = match.endIndex - match.startIndex + 1;
-
-                    for (int i = tagIndex; i < tagIndex + length; i++)
-                    {
-                        colors[i] = Color.FromArgb(0, 0, 0, 0);
-                    }
-                    for (int i = tagIndex + length; i < colors.Length; i++)
-                    {
-                        colors[i] = match.color;
-                    }
-
-                    // Remove the processed tag
-                    text = text.Remove(tagIndex - missing, length);
-                    missing += length;
-                    plainText = text;
-                }
-
-                var fuckOff = colors.ToList();
-                fuckOff.RemoveAll(x => x == transparent);
-                return (plainText, fuckOff);
-            }
-            catch (Exception)
-            {
-                return (null, null);
-            }
-        }
-
-        private List<(string Line, List<Color?> Colors)> WrapText(string text, List<Color?> colors, int maxWidth)
-        {
-            var wrappedLines = new List<(string Line, List<Color?> Colors)>();
+            List<string> wrappedLines = new();
             if (string.IsNullOrEmpty(text))
             {
                 return wrappedLines;
@@ -167,8 +156,7 @@ namespace MelonUI.Default
                         }
                     }
 
-                    var lineColors = colors.GetRange(start + last, length);
-                    wrappedLines.Add((line, lineColors));
+                    wrappedLines.Add(line);
                     start += length;
                 }
                 last += paragraph.Length + 1;
@@ -176,17 +164,194 @@ namespace MelonUI.Default
 
             return wrappedLines;
         }
-
-        private void RenderColoredLine(ConsoleBuffer buffer, int startX, int startY, string line, List<Color?> colors, Color defaultFg, Color defaultBg)
+        private List<string> WrapAnsiText(string text, int maxWidth)
         {
-            int currentX = startX;
-
-            for (int i = 0; i < line.Length; i++)
+            var wrappedLines = new List<string>();
+            if (string.IsNullOrEmpty(text))
             {
-                char c = line[i];
-                Color fg = colors[i] ?? defaultFg;
-                buffer.SetPixel(currentX++, startY, c, fg, defaultBg);
+                return wrappedLines;
             }
+
+            var paragraphs = text.Split('\n');
+            int colorIndex = 0;
+
+            foreach (var paragraph in paragraphs)
+            {
+                int visibleStart = 0;
+                bool isWrappedLine = false;
+
+                while (visibleStart < GetVisibleLength(paragraph))
+                {
+                    int visibleLength = Math.Min(maxWidth, GetVisibleLength(paragraph) - visibleStart);
+                    (string line, int actualLength) = ExtractVisibleSubstring(paragraph, visibleStart, visibleLength);
+
+                    if (visibleStart + visibleLength < GetVisibleLength(paragraph))
+                    {
+                        int lastSpace = FindLastVisibleSpace(line);
+                        if (lastSpace >= 0)
+                        {
+                            line = line.Substring(0, lastSpace);
+                            actualLength = GetActualLength(line);
+                            visibleStart--; // Adjust for the space that will be trimmed
+                        }
+                    }
+
+                    if (isWrappedLine)
+                    {
+                        (string trimmedLine, int trimCount) = TrimStartWithAnsi(line);
+                        line = trimmedLine;
+                        actualLength -= trimCount;
+                    }
+
+                    wrappedLines.Add(line);
+                    visibleStart += GetVisibleLength(line);
+                    colorIndex += actualLength;
+                    isWrappedLine = true;
+                }
+                colorIndex++; // Account for newline
+            }
+            return wrappedLines;
+        }
+
+        private (string text, int trimCount) TrimStartWithAnsi(string text)
+        {
+            int visibleTrimCount = 0;
+            StringBuilder result = new StringBuilder();
+            bool foundNonSpace = false;
+            int i = 0;
+
+            while (i < text.Length)
+            {
+                if (text[i] == '\x1b')
+                {
+                    int escStart = i;
+                    while (i < text.Length && !char.IsLetter(text[i])) i++;
+                    if (!foundNonSpace)
+                    {
+                        result.Append(text.Substring(escStart, i - escStart + 1));
+                    }
+                    i++;
+                    continue;
+                }
+
+                if (!foundNonSpace)
+                {
+                    if (text[i] == ' ')
+                    {
+                        visibleTrimCount++;
+                    }
+                    else
+                    {
+                        foundNonSpace = true;
+                        result.Append(text[i]);
+                    }
+                }
+                else
+                {
+                    result.Append(text[i]);
+                }
+                i++;
+            }
+
+            return (result.ToString(), visibleTrimCount);
+        }
+
+        private int GetVisibleLength(string text)
+        {
+            int length = 0;
+            int i = 0;
+            while (i < text.Length)
+            {
+                if (text[i] == '\x1b')
+                {
+                    while (i < text.Length && !char.IsLetter(text[i])) i++;
+                    i++; // Skip the terminating letter
+                    continue;
+                }
+                length++;
+                i++;
+            }
+            return length;
+        }
+
+        private (string text, int actualLength) ExtractVisibleSubstring(string text, int visibleStart, int visibleLength)
+        {
+            int currentVisible = 0;
+            int start = 0;
+
+            while (currentVisible < visibleStart && start < text.Length)
+            {
+                if (text[start] == '\x1b')
+                {
+                    while (start < text.Length && !char.IsLetter(text[start])) start++;
+                    start++;
+                    continue;
+                }
+                currentVisible++;
+                start++;
+            }
+
+            int end = start;
+            currentVisible = 0;
+            StringBuilder result = new StringBuilder();
+
+            while (currentVisible < visibleLength && end < text.Length)
+            {
+                if (text[end] == '\x1b')
+                {
+                    int escStart = end;
+                    while (end < text.Length && !char.IsLetter(text[end])) end++;
+                    result.Append(text.Substring(escStart, end - escStart + 1));
+                    end++;
+                    continue;
+                }
+                result.Append(text[end]);
+                currentVisible++;
+                end++;
+            }
+
+            return (result.ToString(), end - start);
+        }
+
+        private int FindLastVisibleSpace(string text)
+        {
+            int lastSpace = -1;
+            int visiblePos = -1;
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '\x1b')
+                {
+                    while (i < text.Length && !char.IsLetter(text[i])) i++;
+                    continue;
+                }
+                visiblePos++;
+                if (text[i] == ' ')
+                {
+                    lastSpace = i;
+                }
+            }
+            return lastSpace;
+        }
+
+        private int GetActualLength(string text)
+        {
+            int length = 0;
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '\x1b')
+                {
+                    while (i < text.Length && !char.IsLetter(text[i])) i++;
+                    continue;
+                }
+                length++;
+            }
+            return length;
+        }
+        private void RenderColoredLine(ConsoleBuffer buffer, int startX, int startY, string line, Color defaultFg, Color defaultBg)
+        {
+            var buf = ColoredStringParser.ParseColoredString(line);
+            buffer.WriteBuffer(startX, startY, buf);
         }
 
         private int CalculateStartX(int contentWidth, int maxWidth)

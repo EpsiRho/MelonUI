@@ -1,10 +1,13 @@
-﻿using MelonUI.Enums;
+﻿using MelonUI.Attributes;
+using MelonUI.Enums;
+using MelonUI.Helpers;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Pastel;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -16,8 +19,10 @@ using System.Xml.Linq;
 
 namespace MelonUI.Base
 {
-    public class MUIPage : UIElement
+    public partial class MUIPage : UIElement
     {
+        [Binding]
+        public string mXMLFilePath;
         public string MXML { get; set; }
         private readonly List<Assembly> Assemblies = new();
         private readonly List<string> Namespaces = new();
@@ -26,13 +31,15 @@ namespace MelonUI.Base
         public CompilerMessage CompilerFocusedMessage = new CompilerMessage("", MessageSeverity.Debug);
         public List<string> Backends = new();
         public Dictionary<string, object> BackendObjects = new();
+        public Dictionary<Type, Func<object, object>> TypeExtensions = new();
         private Dictionary<UIElement, ConsoleBuffer> BufferCache = new();
         public TimeSpan CompilationFinished = TimeSpan.MinValue;
         //public MessageSeverity CompilerVerbosity = MessageSeverity.Debug | MessageSeverity.Info | MessageSeverity.Warning | MessageSeverity.Error  | MessageSeverity.Success;
 
         private int zCounter = 0;
 
-        public MUIPage() {
+        public MUIPage()
+        {
             ConsiderForFocus = false;
         }
 
@@ -55,6 +62,7 @@ namespace MelonUI.Base
             {
                 string xml = File.ReadAllText(filePath);
                 CompilerMessages.Add(new CompilerMessage($"Loaded file \"{filePath}\" for compilation.", MessageSeverity.Info));
+                MXMLFilePath = filePath;
                 return Compile(xml);
             }
             catch (Exception)
@@ -134,7 +142,7 @@ namespace MelonUI.Base
             foreach (var child in root.Elements())
             {
                 CompilerMessages.Add(new CompilerMessage($"Parsing {child.Name}.", MessageSeverity.Info, GetLineNumber(child)));
-                var uiElement = ParseElement(child); // Parse the element
+                var uiElement = ParseMXMLElement(child); // Parse the element
                 if (Failed) // If it failed, return out
                 {
                     CompilerMessages.Add(new CompilerMessage($"MXML Element \"{child.Name}\" failed to compile!", MessageSeverity.Error, GetLineNumber(child)));
@@ -142,7 +150,7 @@ namespace MelonUI.Base
                     return false;
                 }
                 if (uiElement != null) AddElement((UIElement)uiElement); // Add the element to the page's children
-                if(string.IsNullOrEmpty(((UIElement)uiElement).Width) || string.IsNullOrEmpty(((UIElement)uiElement).Height))
+                if (string.IsNullOrEmpty(((UIElement)uiElement).Width) || string.IsNullOrEmpty(((UIElement)uiElement).Height))
                 {
                     CompilerMessages.Add(new CompilerMessage($"{child.Name}'s Width/Height are not set, so this object will not be visible! (If you want this, ideally use IsVisible and pre-set the W/H)", MessageSeverity.Warning, GetLineNumber(child)));
                 }
@@ -158,7 +166,7 @@ namespace MelonUI.Base
             Children.Reverse();
 
             CompilerMessages.Add(new CompilerMessage($"Compiled {Children.Count} objects in {DateTime.Now.Subtract(CompilerMessages.First().DateTime).TotalSeconds} seconds.", MessageSeverity.Info));
-            CompilerMessages.Add(new CompilerMessage($"Noted {CompilerMessages.Where(x=>x.Severity == MessageSeverity.Warning).Count()} warnings during compilation.", MessageSeverity.Info));
+            CompilerMessages.Add(new CompilerMessage($"Noted {CompilerMessages.Where(x => x.Severity == MessageSeverity.Warning).Count()} warnings during compilation.", MessageSeverity.Info));
             CompilerMessages.Add(new CompilerMessage($"Successfully compiled this page!", MessageSeverity.Success));
             CompilerFocusedMessage = CompilerMessages.Last();
             CompilationFinished = DateTime.Now.Subtract(CompilerMessages.First().DateTime);
@@ -170,7 +178,7 @@ namespace MelonUI.Base
         /// </summary>
         public void AddElement(UIElement elm)
         {
-            if (elm == null) 
+            if (elm == null)
             {
                 CompilerMessages.Add(new CompilerMessage($"Attempted to add a null element!", MessageSeverity.Error));
                 Failed = true;
@@ -375,7 +383,7 @@ namespace MelonUI.Base
                 lines.Add("{CLLine1}");
                 lines.Add($" │ Relevant Logs");
                 lines.Add("{CLLine2}");
-                foreach (var msg in CompilerMessages.Where(x=>x.Severity== MessageSeverity.Success))
+                foreach (var msg in CompilerMessages.Where(x => x.Severity == MessageSeverity.Success))
                 {
                     if (msg != CompilerFocusedMessage)
                     {
@@ -389,7 +397,7 @@ namespace MelonUI.Base
                 int warningCount = CompilerMessages.Where(x => x.Severity == MessageSeverity.Warning).Count();
                 lines.Add($"   ├╴Compiled {Children.Count} objects in {CompilationFinished.TotalSeconds} seconds.");
                 lines.Add($"   ├╴Noted {warningCount} warnings during compilation.");
-                if(warningCount > 0)
+                if (warningCount > 0)
                 {
                     lines.Add("{CLLine5}");
                     lines.Add($"     │ Warnings");
@@ -404,7 +412,7 @@ namespace MelonUI.Base
                 }
 
                 int maxW = lines.Max(x => x.Length + 2);
-                maxW = maxW > Console.WindowWidth - 2? Console.WindowWidth - 2: maxW;
+                maxW = maxW > Console.WindowWidth - 2 ? Console.WindowWidth - 2 : maxW;
                 List<int> indexes = new();
                 indexes.Add(lines.IndexOf("{CLLine1}"));
                 indexes.Add(lines.IndexOf("{CLLine2}"));
@@ -412,12 +420,12 @@ namespace MelonUI.Base
                 indexes.Add(lines.IndexOf("{CLLine4}"));
                 indexes.Add(lines.IndexOf("{CLLine5}"));
                 indexes.Add(lines.IndexOf("{CLLine6}"));
-                lines[lines.IndexOf("{CLLine1}")] = $"═╤{string.Join("",Enumerable.Repeat("═",maxW - 2))}╕";
-                lines[lines.IndexOf("{CLLine2}")] = $" ├{string.Join("",Enumerable.Repeat("─", maxW - 2))}┤";
-                lines[lines.IndexOf("{CLLine3}")] = $" ╘═╤{string.Join("",Enumerable.Repeat("═",maxW - 4))}╡";
-                lines[lines.IndexOf("{CLLine4}")] = $"   ├{string.Join("",Enumerable.Repeat("─", maxW - 4))}┤";
-                lines[lines.IndexOf("{CLLine5}")] = $"   ╘═╤{string.Join("",Enumerable.Repeat("═",maxW - 6))}╡";
-                lines[lines.IndexOf("{CLLine6}")] = $"     ├{string.Join("",Enumerable.Repeat("─", maxW - 6))}┤";
+                lines[lines.IndexOf("{CLLine1}")] = $"═╤{string.Join("", Enumerable.Repeat("═", maxW - 2))}╕";
+                lines[lines.IndexOf("{CLLine2}")] = $" ├{string.Join("", Enumerable.Repeat("─", maxW - 2))}┤";
+                lines[lines.IndexOf("{CLLine3}")] = $" ╘═╤{string.Join("", Enumerable.Repeat("═", maxW - 4))}╡";
+                lines[lines.IndexOf("{CLLine4}")] = $"   ├{string.Join("", Enumerable.Repeat("─", maxW - 4))}┤";
+                lines[lines.IndexOf("{CLLine5}")] = $"   ╘═╤{string.Join("", Enumerable.Repeat("═", maxW - 6))}╡";
+                lines[lines.IndexOf("{CLLine6}")] = $"     ├{string.Join("", Enumerable.Repeat("─", maxW - 6))}┤";
                 lines.Add($"     └{string.Join("", Enumerable.Repeat("─", maxW - 6))}┘");
                 indexes.Add(lines.Count() - 1);
 
@@ -433,9 +441,9 @@ namespace MelonUI.Base
                     }
                     else
                     {
-                        wrappedLines = WrapTextByChar(line, maxW -1 );
+                        wrappedLines = WrapTextByChar(line, maxW - 1);
                     }
-                    
+
 
                     string fLine = wrappedLines.First();
                     output.Add($"{fLine}");
@@ -457,7 +465,7 @@ namespace MelonUI.Base
                 foreach (var line in output.Skip(1))
                 {
                     int i = maxW - (ParamParser.GetVisibleLength(line));
-                    if(i >= 0)
+                    if (i >= 0)
                     {
                         output2.Add($"{line}{string.Join("", Enumerable.Repeat(" ", i))}│");
                     }
@@ -491,9 +499,9 @@ namespace MelonUI.Base
                 lines.Add($"   │ Debug View");
                 lines.Add("{CLLine4}");
                 int ContextSize = 8;
-                if(CompilerFocusedMessage.MxmlLineNumber.Line != -1)
+                if (CompilerFocusedMessage.MxmlLineNumber.Line != -1)
                 {
-                    var xmlCon = GetXmlContext(CompilerFocusedMessage.MxmlLineNumber.Line, ContextSize).Replace("\t","  ").Replace("\r", "");
+                    var xmlCon = GetXmlContext(CompilerFocusedMessage.MxmlLineNumber.Line, ContextSize).Replace("\t", "  ").Replace("\r", "");
                     int lcount = CompilerFocusedMessage.MxmlLineNumber.Line - ContextSize;
                     foreach (var ln in xmlCon.Split("\n"))
                     {
@@ -516,7 +524,7 @@ namespace MelonUI.Base
                 }
 
                 int maxW = lines.Max(x => x.Length + 1);
-                maxW = maxW > Console.WindowWidth - 2? Console.WindowWidth - 2: maxW;
+                maxW = maxW > Console.WindowWidth - 2 ? Console.WindowWidth - 2 : maxW;
                 List<int> indexes = new();
                 indexes.Add(lines.IndexOf("{CLLine1}"));
                 indexes.Add(lines.IndexOf("{CLLine2}"));
@@ -543,7 +551,7 @@ namespace MelonUI.Base
                     {
                         wrappedLines = WrapTextByChar(line, maxW);
                     }
-                    
+
 
                     string fLine = wrappedLines.First();
                     output.Add($"{fLine}");
@@ -565,7 +573,7 @@ namespace MelonUI.Base
                 foreach (var line in output.Skip(1))
                 {
                     int i = maxW - (ParamParser.GetVisibleLength(line));
-                    if(i >= 0)
+                    if (i >= 0)
                     {
                         output2.Add($"{line}{string.Join("", Enumerable.Repeat(" ", i))}│");
                     }
@@ -654,13 +662,13 @@ namespace MelonUI.Base
                 }
 
                 // If property not found, check if there's a method with that name for event binding
-                var method = currentType.GetMethod(memberName,BindingFlags.Static |
+                var method = currentType.GetMethod(memberName, BindingFlags.Static |
                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
                 if (method != null)
                 {
                     if (isLast) return new Binding(currentObject, method);
                 }
-                    
+
 
                 // Check for event
                 var evt = currentType.GetEvent(memberName,
@@ -759,7 +767,7 @@ namespace MelonUI.Base
 
             // 1) Set properties from attributes
             var flagsFromElement = GetFlagsFromElement(element);
-            CompilerMessages.Add(new CompilerMessage($"Got flags \"{string.Join(", ",flagsFromElement.Select(x=>$"{x.Key}={x.Value}"))}\".", MessageSeverity.Debug, lineNumber));
+            CompilerMessages.Add(new CompilerMessage($"Got flags \"{string.Join(", ", flagsFromElement.Select(x => $"{x.Key}={x.Value}"))}\".", MessageSeverity.Debug, lineNumber));
             CompilerMessages.Add(new CompilerMessage($"Setting Properties for {elementType.Name}.", MessageSeverity.Debug, lineNumber));
             foreach (var attr in element.Attributes())
             {
@@ -858,11 +866,80 @@ namespace MelonUI.Base
                 Failed = true;
                 return null;
             }
-
-            if (typeof(UIElement).IsAssignableFrom(childType))
+            if (typeof(MUIPage).IsAssignableFrom(childType))
+                return ParseMUIPage(element);
+            else if (typeof(UIElement).IsAssignableFrom(childType))
                 return ParseElement(element);
             else
                 return ParseCustomObject(element);
+        }
+
+        public object ParseMUIPage(XElement element)
+        {
+            var lineNumber = GetLineNumber(element);
+            if (element.Name.LocalName.Contains("."))
+            {
+                Failed = true;
+                CompilerMessages.Add(new CompilerMessage($"Top-Level elements cannot have dots in their name.", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
+                return null;
+            }
+
+            var elementType = FindElementType(element.Name.LocalName);
+            if (elementType == null)
+            {
+                Failed = true;
+                CompilerMessages.Add(new CompilerMessage($"Unkown element type \"{element.Name.LocalName}\".", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
+                return null;
+            }
+
+            CompilerMessages.Add(new CompilerMessage($"Creating instance of {elementType.Name}.", MessageSeverity.Debug, lineNumber));
+            MUIPage page = (MUIPage)Activator.CreateInstance(elementType);
+
+            var flagsFromElement = GetFlagsFromElement(element);
+            CompilerMessages.Add(new CompilerMessage($"Got flags \"{string.Join(", ", flagsFromElement.Select(x => $"{x.Key}={x.Value}"))}\".", MessageSeverity.Debug, lineNumber));
+            CompilerMessages.Add(new CompilerMessage($"Setting Properties for {elementType.Name}.", MessageSeverity.Debug, lineNumber));
+            foreach (var attr in element.Attributes())
+            {
+                SetProperty(page, attr.Name.LocalName, attr.Value, flagsFromElement, attr);
+                if (Failed) return null;
+            }
+
+            page.Assemblies.AddRange(Assemblies);
+            page.Namespaces.AddRange(Namespaces);
+            page.Backends.AddRange(Backends);
+            foreach (var item in BackendObjects)
+            {
+                page.BackendObjects.Add(item.Key,item.Value);
+            }
+
+            if (File.Exists(page.MXMLFilePath))
+            {
+                CompilerMessages.Add(new CompilerMessage($"Compiling MXML Page \"{page.MXMLFilePath}\"", MessageSeverity.Debug, lineNumber));
+                var chk = page.CompileFile(page.MXMLFilePath);
+                if (!chk)
+                {
+                    Failed = true;
+                    CompilerMessages.AddRange(page.CompilerMessages);
+                    CompilerFocusedMessage = page.CompilerFocusedMessage;
+                    return null;
+                }
+
+                //page.IsVisible = false;
+                //Children.AddRange(page.Children);
+                //page.Children.Clear();
+
+                return page;
+            }
+            else
+            {
+                CompilerMessages.Add(new CompilerMessage($"Couldn't Find MXML File \"{page.MXMLFilePath}\"!", MessageSeverity.Error, lineNumber));
+                Failed = true;
+                CompilerFocusedMessage = CompilerMessages.Last();
+                return null;
+
+            }
         }
 
         /// <summary>
@@ -1008,7 +1085,14 @@ namespace MelonUI.Base
             }
 
             // Use CompilerTypeExtensions to convert value to targetType
-            CompilerMessages.Add(new CompilerMessage($"CompilerTypeExtensions disabled, skipping!", MessageSeverity.Debug, lineNumber));
+            CompilerMessages.Add(new CompilerMessage($"Attempting to use Compiler TypeExtensions.", MessageSeverity.Debug, lineNumber));
+            var chk = TypeExtensions.TryGetValue(targetType, out var typeExtension);
+            if (chk)
+            {
+                var obj = typeExtension(value);
+                var castResult = Convert.ChangeType(obj, targetType);
+                return castResult;
+            }
 
             CompilerMessages.Add(new CompilerMessage($"Attempting to convert to assignable object.", MessageSeverity.Debug, lineNumber));
             // If already assignable, return
@@ -1149,7 +1233,7 @@ namespace MelonUI.Base
                         if (typeof(UIElement).IsAssignableFrom(childType))
                         {
                             var childElement = ParseElement(ne);
-                            if(childElement == null)
+                            if (childElement == null)
                             {
                                 Failed = true;
                                 CompilerMessages.Add(new CompilerMessage($"Failed to parse child element {ne.Name.LocalName}", MessageSeverity.Error, lineNumber));
@@ -1584,7 +1668,6 @@ namespace MelonUI.Base
                 Parallel.ForEach(visibleElms, (element) =>
                 {
                     ConsoleBuffer elementBuffer = null;
-
                     if (element.NeedsRecalculation)
                     {
                         element.CalculateLayout(startXOffset, startYOffset, innerWidth, innerHeight);
@@ -1636,7 +1719,7 @@ namespace MelonUI.Base
                     buffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
                 };
             }
-            catch(Exception e) 
+            catch (Exception e)
             {
                 buffer.WriteStringWrapped(0, 0, e.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
             }
