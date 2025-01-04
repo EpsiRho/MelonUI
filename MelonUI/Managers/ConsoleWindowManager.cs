@@ -21,10 +21,13 @@ namespace MelonUI.Managers
         private ConsoleBuffer MainBuffer;
         public event EventHandler FrameRendered;
         private Dictionary<UIElement, ConsoleBuffer> BufferCache = new();
+        private List<KeyboardControl> _KeyboardControls = new List<KeyboardControl>();
         public string Title = "";
         public string Status = "";
         private bool IsAltHeld = false;
         public bool EnableSystemFocusControls = true;
+        public bool EnableGlobalControls = true;
+        public bool EnableTitleBar = false;
         public int HighestZ = 0;
         public Color TitleForeground { get; set; } = Color.White;
         public Color TitleBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
@@ -343,10 +346,15 @@ namespace MelonUI.Managers
                 MainBuffer.Clear(Color.FromArgb(0,0,0,0));
 
                 // Draw title and status
-                for (int i = 0; i < Title.Length && i < MainBuffer.Width; i++)
-                    MainBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
-                for (int i = 0; i < Status.Length && i < MainBuffer.Width; i++)
-                    MainBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
+                int bumpY = 0;
+                if (EnableTitleBar)
+                {
+                    bumpY = 2;
+                    for (int i = 0; i < Title.Length && i < MainBuffer.Width; i++)
+                        MainBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
+                    for (int i = 0; i < Status.Length && i < MainBuffer.Width; i++)
+                        MainBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
+                }
 
                 // Calculate layouts and render elements
                 var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();
@@ -362,7 +370,7 @@ namespace MelonUI.Managers
 
                     if (element.NeedsRecalculation)
                     {
-                        element.CalculateLayout(0, 2, MainBuffer.Width, MainBuffer.Height - 2);
+                        element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
                         elementBuffer = element.Render();
 
                         if (element.EnableCaching)
@@ -389,7 +397,7 @@ namespace MelonUI.Managers
 
                         if (!bufferFound)
                         {
-                            element.CalculateLayout(0, 2, MainBuffer.Width, MainBuffer.Height - 2);
+                            element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
                             elementBuffer = element.Render();
 
                             if (element.EnableCaching)
@@ -485,6 +493,10 @@ namespace MelonUI.Managers
             {
                 var key = Console.ReadKey(true);
 
+                if (!EnableGlobalControls)
+                {
+                    return;
+                }
 
                 if (key.Modifiers == ConsoleModifiers.Alt)
                 {
@@ -519,6 +531,13 @@ namespace MelonUI.Managers
                 }
                 else
                 {
+                    foreach (var control in _KeyboardControls)
+                    {
+                        if (control.Matches(key))
+                        {
+                            control.Action();
+                        }
+                    }
                     FocusedElement?.HandleKey(key);
                 }
             }
@@ -526,6 +545,28 @@ namespace MelonUI.Managers
             {
 
             }
+        }
+        public void RegisterKeyboardControl(ConsoleKey key, Action action, string description,
+            bool requireShift = false, bool requireControl = false, bool requireAlt = false)
+        {
+            _KeyboardControls.Add(new KeyboardControl
+            {
+                Key = key,
+                Action = action,
+                Description = description,
+                RequireShift = requireShift,
+                RequireControl = requireControl,
+                RequireAlt = requireAlt
+            });
+        }
+        public void RegisterKeyboardControl(KeyboardControl keyControl)
+        {
+            _KeyboardControls.Add(keyControl);
+        }
+
+        public virtual IEnumerable<KeyboardControl> GetKeyboardControls()
+        {
+            return _KeyboardControls;
         }
 
         public async Task ManageConsole(CancellationToken cancellationToken)

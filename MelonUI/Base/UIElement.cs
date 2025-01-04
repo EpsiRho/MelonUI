@@ -48,17 +48,17 @@ namespace MelonUI.Base
         [Binding]
         private string _UID = Guid.NewGuid().ToString();
         [Binding]
-        private string _X = "0";
+        private string _X = "";
         [Binding]
-        private string _Y = "0";
+        private string _Y = "";
         [Binding]
-        private string _Width = "0";
+        private string _Width = "";
         [Binding]
-        private string _Height = "0";
+        private string _Height = "";
         [Binding]
-        private string _MinWidth = "5";
+        private string _MinWidth = "";
         [Binding]
-        private string _MinHeight = "3";
+        private string _MinHeight = "";
         [Binding]
         private string _MaxWidth = "";
         [Binding]

@@ -7,7 +7,7 @@
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,0,0"
+		   FocusedForeground="255,0,0"
 		   TextAlignment="TopLeft"
 		   XYAlignment="TopLeft"
 		   Width="30%"
@@ -22,7 +22,7 @@
 	<TextBlock Text="Hewwo"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,255,255"
+		   FocusedForeground="255,255,255"
 		   TextAlignment="TopCenter"
 		   XYAlignment="TopCenter"
 		   Width="30%"
@@ -30,7 +30,7 @@
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,255,255"
+		   FocusedForeground="255,255,255"
 		   TextAlignment="TopRight"
 		   XYAlignment="TopRight"
 		   Width="30%"
@@ -38,7 +38,7 @@
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,255,255"
+		   FocusedForeground="255,255,255"
 		   TextAlignment="CenterLeft"
 		   XYAlignment="CenterLeft"
 		   Width="30%"
@@ -46,15 +46,13 @@
 	<ProgressBar Width="20%"
 		     Height="3"
 		     Name="TestPB"
-		     ProgressColor="{TestPageBackend.ProgColor}"
-		     EmptyColor="{TestPageBackend.ProgBgColor}"
 		     XYAlignment="Centered"
 		     ProgressValue="0.4"/>
 
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,255,255"
+		   FocusedForeground="255,255,255"
 		   TextAlignment="CenterRight"
 		   XYAlignment="CenterRight"
 		   Width="30%"
@@ -62,15 +60,22 @@
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,255,255"
+		   FocusedForeground="255,255,255"
 		   TextAlignment="BottomLeft"
-		   XYAlignment="BottomLeft"
-		   Width="30%"
-		   Height="22%"/>
+		   XYAlignment="BottomLeft"/>
+
+	<OptionsMenu>
+		<OptionsMenu.Options>
+			<MenuItem Option="Cock Explosion" OnSelect="{TestPageBackend.OnUp}"/>
+			<MenuItem Option="Ass Explosion" OnSelect="{TestPageBackend.OnUp}"/>
+			<MenuItem Option="Boobs Explosion" OnSelect="{TestPageBackend.OnUp}"/>
+			<MenuItem Option="Personality?! Explosion" OnSelect="{TestPageBackend.OnUp}"/>
+		</OptionsMenu.Options>
+	</OptionsMenu>
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,255,255"
+		   FocusedForeground="255,255,255"
 		   TextAlignment="BottomCenter"
 		   XYAlignment="BottomCenter"
 		   Width="30%"
@@ -78,7 +83,7 @@
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
 		   Y="0"
-		   FocusedForeground="1,255,255,255"
+		   FocusedForeground="255,255,255"
 		   TextAlignment="BottomRight"
 		   XYAlignment="BottomRight"
 		   Width="30%"

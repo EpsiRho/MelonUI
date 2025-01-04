@@ -1,4 +1,7 @@
-﻿using System;
+﻿using MelonUI.Enums;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Pastel;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -6,6 +9,9 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace MelonUI.Base
@@ -16,10 +22,13 @@ namespace MelonUI.Base
         private readonly List<Assembly> Assemblies = new();
         private readonly List<string> Namespaces = new();
         public bool Failed = false;
-        public List<string> CompilerMessages = new();
+        public List<CompilerMessage> CompilerMessages = new();
+        public CompilerMessage CompilerFocusedMessage = new CompilerMessage("", MessageSeverity.Debug);
         public List<string> Backends = new();
         public Dictionary<string, object> BackendObjects = new();
         private Dictionary<UIElement, ConsoleBuffer> BufferCache = new();
+        public TimeSpan CompilationFinished = TimeSpan.MinValue;
+        //public MessageSeverity CompilerVerbosity = MessageSeverity.Debug | MessageSeverity.Info | MessageSeverity.Warning | MessageSeverity.Error  | MessageSeverity.Success;
 
         private int zCounter = 0;
 
@@ -34,8 +43,28 @@ namespace MelonUI.Base
         /// </summary>
         public bool CompileFile(string filePath)
         {
-            string xml = File.ReadAllText(filePath);
-            return Compile(xml);
+            if (!File.Exists(filePath))
+            {
+                var msg = new CompilerMessage($"File \"{filePath}\" does not exist.", MessageSeverity.Error);
+                CompilerMessages.Add(msg);
+                CompilerFocusedMessage = msg;
+                Failed = true;
+                return false;
+            }
+            try
+            {
+                string xml = File.ReadAllText(filePath);
+                CompilerMessages.Add(new CompilerMessage($"Loaded file \"{filePath}\" for compilation.", MessageSeverity.Info));
+                return Compile(xml);
+            }
+            catch (Exception)
+            {
+                var msg = new CompilerMessage($"Failed to read file \"{filePath}\".", MessageSeverity.Error);
+                CompilerMessages.Add(msg);
+                CompilerFocusedMessage = msg;
+                Failed = true;
+                return false;
+            }
         }
 
         /// <summary>
@@ -48,33 +77,91 @@ namespace MelonUI.Base
             MXML = mxmlString;
             CompilerMessages.Clear();
             Children.Clear();
+            CompilerMessages.Add(new CompilerMessage($"Begining Compilation.", MessageSeverity.Info));
+            CompilerMessages.Add(new CompilerMessage($"Starting Z offset: {Z}.", MessageSeverity.Debug));
 
             XElement root;
             try
             {
-                root = XElement.Parse(mxmlString);
+                CompilerMessages.Add(new CompilerMessage($"Parsing XML.", MessageSeverity.Info));
+                //root = XElement.Parse(mxmlString);
+
+                var settings = new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore };
+                using var stringReader = new StringReader(mxmlString);
+                using var xmlReader = XmlReader.Create(stringReader, settings);
+                root = XElement.Load(xmlReader, LoadOptions.SetLineInfo);
+                CompilerMessages.Add(new CompilerMessage($"XML Parsed Successfully.", MessageSeverity.Success));
+
             }
             catch (Exception e)
             {
-                CompilerMessages.Add("Generic XML formatting error, see following line:");
-                CompilerMessages.Add(e.Message);
+                var msg = new CompilerMessage($"Generic XML formatting error, see following line:\n{e.Message}", MessageSeverity.Error);
+                CompilerMessages.Add(msg);
+                CompilerFocusedMessage = msg;
+                Failed = true;
+                CompilationFinished = DateTime.Now.Subtract(CompilerMessages.First().DateTime);
                 return false;
             }
 
+
             // Process top-level attributes (Namespaces, Assemblies, Backends, etc.)
-            if (!ParseTopLevelAttributes(root)) return false;
+            CompilerMessages.Add(new CompilerMessage($"Parsing Top-Level Attributes.", MessageSeverity.Info, GetLineNumber(root)));
+            if (!ParseTopLevelAttributes(root))
+            {
+                CompilerMessages.Add(new CompilerMessage($"Top-Level MUIPage Attributes failed to compile!", MessageSeverity.Error, GetLineNumber(root)));
+                CompilationFinished = DateTime.Now.Subtract(CompilerMessages.First().DateTime);
+                return false;
+            }
+            CompilerMessages.Add(new CompilerMessage($"Top-Level Attributes Parsed", MessageSeverity.Success, GetLineNumber(root)));
+
+            // Compiler Debug Info
+            CompilerMessages.Add(new CompilerMessage($"Loaded {Assemblies.Count} Assemblies, {Namespaces.Count} Namespaces, {Backends.Count} Backends with {BackendObjects.Count} Managed Objects.", MessageSeverity.Debug));
+            if (Name != null)
+            {
+                CompilerMessages.Add(new CompilerMessage($"Page Name: {Name}.", MessageSeverity.Debug));
+            }
+            if (!string.IsNullOrEmpty(Width) && !string.IsNullOrEmpty(Height))
+            {
+                CompilerMessages.Add(new CompilerMessage($"Width/Height: ({Width},{Height}).", MessageSeverity.Debug));
+            }
+            else
+            {
+                CompilerMessages.Add(new CompilerMessage($"Page Compilation will succeed, but you may not see any page if it has no size!\nSet am explicit Width and Height to remove this warning.", MessageSeverity.Warning, GetLineNumber(root)));
+            }
 
             // Parse child elements (UIElements, etc.)
+            CompilerMessages.Add(new CompilerMessage($"Parsing Page Elements.", MessageSeverity.Info, GetLineNumber(root)));
             foreach (var child in root.Elements())
             {
-                var uiElement = ParseElement(child);
-                if (Failed) return false;
-                if (uiElement != null) AddElement((UIElement)uiElement);
+                CompilerMessages.Add(new CompilerMessage($"Parsing {child.Name}.", MessageSeverity.Info, GetLineNumber(child)));
+                var uiElement = ParseElement(child); // Parse the element
+                if (Failed) // If it failed, return out
+                {
+                    CompilerMessages.Add(new CompilerMessage($"MXML Element \"{child.Name}\" failed to compile!", MessageSeverity.Error, GetLineNumber(child)));
+                    CompilationFinished = DateTime.Now.Subtract(CompilerMessages.First().DateTime);
+                    return false;
+                }
+                if (uiElement != null) AddElement((UIElement)uiElement); // Add the element to the page's children
+                if(string.IsNullOrEmpty(((UIElement)uiElement).Width) || string.IsNullOrEmpty(((UIElement)uiElement).Height))
+                {
+                    CompilerMessages.Add(new CompilerMessage($"{child.Name}'s Width/Height are not set, so this object will not be visible! (If you want this, ideally use IsVisible and pre-set the W/H)", MessageSeverity.Warning, GetLineNumber(child)));
+                }
+                if (string.IsNullOrEmpty(((UIElement)uiElement).Name))
+                {
+                    CompilerMessages.Add(new CompilerMessage($"{child.Name}'s object does not have a Name. The object will show and be usable, but will be harder to interact with in C#.", MessageSeverity.Warning, GetLineNumber(child)));
+                }
+                CompilerMessages.Add(new CompilerMessage($"{child.Name} was added to the MUIPage's Children.", MessageSeverity.Success, GetLineNumber(child)));
             }
 
             // Reverse so items are in the same order as in MXML
+            CompilerMessages.Add(new CompilerMessage($"Reversing Element order to match MXML order.", MessageSeverity.Debug));
             Children.Reverse();
 
+            CompilerMessages.Add(new CompilerMessage($"Compiled {Children.Count} objects in {DateTime.Now.Subtract(CompilerMessages.First().DateTime).TotalSeconds} seconds.", MessageSeverity.Info));
+            CompilerMessages.Add(new CompilerMessage($"Noted {CompilerMessages.Where(x=>x.Severity == MessageSeverity.Warning).Count()} warnings during compilation.", MessageSeverity.Info));
+            CompilerMessages.Add(new CompilerMessage($"Successfully compiled this page!", MessageSeverity.Success));
+            CompilerFocusedMessage = CompilerMessages.Last();
+            CompilationFinished = DateTime.Now.Subtract(CompilerMessages.First().DateTime);
             return true;
         }
 
@@ -83,6 +170,12 @@ namespace MelonUI.Base
         /// </summary>
         public void AddElement(UIElement elm)
         {
+            if (elm == null) 
+            {
+                CompilerMessages.Add(new CompilerMessage($"Attempted to add a null element!", MessageSeverity.Error));
+                Failed = true;
+                return;
+            };
             elm.Z = zCounter;
             Children.Add(elm);
         }
@@ -94,21 +187,24 @@ namespace MelonUI.Base
         {
             if (string.IsNullOrWhiteSpace(classAndProperty))
             {
-                CompilerMessages.Add("Property Reference expected, but no name found!");
+                CompilerMessages.Add(new CompilerMessage($"Property Reference expected, but no name found!", MessageSeverity.Error));
                 Failed = true;
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return (null, null);
             }
 
             var parts = classAndProperty.Split('.');
             if (parts.Length != 2)
             {
-                CompilerMessages.Add("Property Reference format is invalid, should look like \"ClassName.PropertyName\"");
+                CompilerMessages.Add(new CompilerMessage($"Property Reference format is invalid, should look like \"ClassName.PropertyName\".", MessageSeverity.Error));
                 Failed = true;
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return (null, null);
             }
 
             string className = parts[0];
             string propertyName = parts[1];
+            CompilerMessages.Add(new CompilerMessage($"Looking for type in known assemblies/namespaces: {className}->{propertyName}.", MessageSeverity.Debug));
             Type foundType = null;
 
             // Try to locate a type in known assemblies/namespaces
@@ -129,80 +225,408 @@ namespace MelonUI.Base
             // If found type, check static property or instance property
             if (foundType != null)
             {
+                CompilerMessages.Add(new CompilerMessage($"Found a type, getting more info.", MessageSeverity.Debug));
                 var staticProp = foundType.GetProperty(propertyName,
                     BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
-                if (staticProp != null) return (foundType, staticProp);
+                if (staticProp != null)
+                {
+                    CompilerMessages.Add(new CompilerMessage($"Static type found, {staticProp.Name}.", MessageSeverity.Debug));
+                    return (foundType, staticProp);
+                }
 
                 if (BackendObjects.TryGetValue(className, out var backendInstance))
                 {
                     var instanceProp = backendInstance.GetType().GetProperty(propertyName,
                         BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
                     if (instanceProp != null)
+                    {
+                        CompilerMessages.Add(new CompilerMessage($"Instance type found, {instanceProp.Name}.", MessageSeverity.Debug));
                         return (backendInstance, instanceProp);
+                    }
                 }
 
-                CompilerMessages.Add($"Property Reference {classAndProperty} found a type, but could not instance or find the property. (Are you using Fields or Properties? Is your Property Public?)");
+                CompilerMessages.Add(new CompilerMessage($"Property Reference {classAndProperty} found a type, but could not instance or find the property. (Are you using Fields or Properties? Is your Property Public?).", MessageSeverity.Error));
                 Failed = true;
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return (null, null);
             }
             else
             {
                 // No direct type found. Maybe a backend instance.
+                CompilerMessages.Add(new CompilerMessage($"No direct type found, searching backend instances.", MessageSeverity.Debug));
                 if (BackendObjects.TryGetValue(className, out var backendInstance))
                 {
                     var instanceProp = backendInstance.GetType().GetProperty(propertyName,
                         BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
                     if (instanceProp != null)
+                    {
+                        CompilerMessages.Add(new CompilerMessage($"Instance type found, {instanceProp.Name}.", MessageSeverity.Debug));
                         return (backendInstance, instanceProp);
+                    }
                 }
 
-                CompilerMessages.Add($"Property Reference {classAndProperty} no type, instance, or property. (Are you using Fields or Properties? Is your Property Public?)");
+                CompilerMessages.Add(new CompilerMessage($"Property Reference {classAndProperty} no type, instance, or property. (Are you using Fields or Properties? Is your Property Public?).", MessageSeverity.Error));
                 Failed = true;
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return (null, null);
             }
         }
 
+        // Compiler Display
+        private List<string> WrapText(string text, int maxWidth)
+        {
+            List<string> wrappedLines = new();
+            if (string.IsNullOrEmpty(text))
+            {
+                return wrappedLines;
+            }
+            var paragraphs = text.Split('\n');
+
+            int last = 0;
+            foreach (var paragraph in paragraphs)
+            {
+                int start = 0;
+                while (start < paragraph.Length)
+                {
+                    int length = Math.Min(maxWidth, paragraph.Length - start);
+                    string line = paragraph.Substring(start, length);
+
+                    if (start + length < paragraph.Length && paragraph[start + length] != ' ')
+                    {
+                        int lastSpace = line.LastIndexOf(' ');
+                        if (lastSpace >= 0)
+                        {
+                            line = line.Substring(0, lastSpace);
+                            length = lastSpace + 1;
+                        }
+                    }
+
+                    wrappedLines.Add(line);
+                    start += length;
+                }
+                last += paragraph.Length + 1;
+            }
+
+            return wrappedLines;
+        }
+        private List<string> WrapTextByChar(string text, int maxWidth)
+        {
+            List<string> wrappedLines = new();
+            if (string.IsNullOrEmpty(text)) return wrappedLines;
+
+            var paragraphs = text.Split('\n');
+            foreach (var paragraph in paragraphs)
+            {
+                int start = 0;
+                while (start < paragraph.Length)
+                {
+                    int length = 0;
+                    int currentWidth = 0;
+
+                    while (currentWidth < maxWidth && (start + length) < paragraph.Length)
+                    {
+                        // Check if this is a console color code
+                        if (paragraph[start + length] == '\x1b' && (start + length + 1) < paragraph.Length && paragraph[start + length + 1] == '[')
+                        {
+                            // Find end of color code
+                            int endIndex = paragraph.IndexOf('m', start + length);
+                            if (endIndex != -1)
+                            {
+                                length = (endIndex + 1) - start;
+                                continue;
+                            }
+                        }
+
+                        length++;
+                        currentWidth++;
+                    }
+
+                    wrappedLines.Add(paragraph.Substring(start, length));
+                    start += length;
+                }
+            }
+            return wrappedLines;
+        }
+        private string GetXmlContext(int lineNumber, int contextLines = 4)
+        {
+            if (lineNumber <= 0) return "";
+
+            var lines = MXML.Split('\n');
+            if (lineNumber > lines.Length) return "";
+
+            var start = Math.Max(0, lineNumber - contextLines - 1);
+            var end = Math.Min(lines.Length - 1, lineNumber + contextLines - 1);
+
+            var result = new StringBuilder();
+            for (int i = start; i <= end; i++)
+            {
+                var prefix = i == lineNumber - 1 ? ">" : " ";
+                result.AppendLine($"{prefix} {i + 1,4}: {lines[i]}");
+            }
+
+            return result.ToString();
+        }
+        public string GetSimpleCompilerDisplay()
+        {
+            List<string> lines = new();
+            if (!Failed)
+            {
+                lines.Add($"Successfully compiled this page!");
+                lines.Add("{CLLine1}");
+                lines.Add($" │ Relevant Logs");
+                lines.Add("{CLLine2}");
+                foreach (var msg in CompilerMessages.Where(x=>x.Severity== MessageSeverity.Success))
+                {
+                    if (msg != CompilerFocusedMessage)
+                    {
+                        lines.Add($" ├╴{msg.Message}");
+                    }
+                }
+                lines.Add("{CLLine3}");
+                lines.Add($"   │ Compilation Info");
+                lines.Add("{CLLine4}");
+                lines.Add($"   ├╴Finished at {CompilerFocusedMessage.DateTime}");
+                int warningCount = CompilerMessages.Where(x => x.Severity == MessageSeverity.Warning).Count();
+                lines.Add($"   ├╴Compiled {Children.Count} objects in {CompilationFinished.TotalSeconds} seconds.");
+                lines.Add($"   ├╴Noted {warningCount} warnings during compilation.");
+                if(warningCount > 0)
+                {
+                    lines.Add("{CLLine5}");
+                    lines.Add($"     │ Warnings");
+                    lines.Add("{CLLine6}");
+                    foreach (var msg in CompilerMessages.Where(x => x.Severity == MessageSeverity.Warning))
+                    {
+                        if (msg != CompilerFocusedMessage)
+                        {
+                            lines.Add($"     ├╴({msg.MxmlLineNumber.Line}) {msg.Message}");
+                        }
+                    }
+                }
+
+                int maxW = lines.Max(x => x.Length + 2);
+                maxW = maxW > Console.WindowWidth - 2? Console.WindowWidth - 2: maxW;
+                List<int> indexes = new();
+                indexes.Add(lines.IndexOf("{CLLine1}"));
+                indexes.Add(lines.IndexOf("{CLLine2}"));
+                indexes.Add(lines.IndexOf("{CLLine3}"));
+                indexes.Add(lines.IndexOf("{CLLine4}"));
+                indexes.Add(lines.IndexOf("{CLLine5}"));
+                indexes.Add(lines.IndexOf("{CLLine6}"));
+                lines[lines.IndexOf("{CLLine1}")] = $"═╤{string.Join("",Enumerable.Repeat("═",maxW - 2))}╕";
+                lines[lines.IndexOf("{CLLine2}")] = $" ├{string.Join("",Enumerable.Repeat("─", maxW - 2))}┤";
+                lines[lines.IndexOf("{CLLine3}")] = $" ╘═╤{string.Join("",Enumerable.Repeat("═",maxW - 4))}╡";
+                lines[lines.IndexOf("{CLLine4}")] = $"   ├{string.Join("",Enumerable.Repeat("─", maxW - 4))}┤";
+                lines[lines.IndexOf("{CLLine5}")] = $"   ╘═╤{string.Join("",Enumerable.Repeat("═",maxW - 6))}╡";
+                lines[lines.IndexOf("{CLLine6}")] = $"     ├{string.Join("",Enumerable.Repeat("─", maxW - 6))}┤";
+                lines.Add($"     └{string.Join("", Enumerable.Repeat("─", maxW - 6))}┘");
+                indexes.Add(lines.Count() - 1);
+
+                List<string> output = new();
+                List<string> output2 = new();
+                int count = 0;
+                foreach (var line in lines)
+                {
+                    List<string> wrappedLines = new();
+                    if (indexes.Contains(count))
+                    {
+                        wrappedLines = WrapTextByChar(line, maxW + 2);
+                    }
+                    else
+                    {
+                        wrappedLines = WrapTextByChar(line, maxW -1 );
+                    }
+                    
+
+                    string fLine = wrappedLines.First();
+                    output.Add($"{fLine}");
+
+                    int idx = fLine.IndexOf('╴') != -1 ? fLine.IndexOf('╴') : fLine.IndexOf("├──>") != -1 ? fLine.IndexOf("├──>") + 1 : -1;
+                    string pre = idx != -1 ? fLine.Substring(0, idx - 1) : "";
+                    foreach (var wLine in wrappedLines.Skip(1))
+                    {
+                        var wrappedLines2 = WrapTextByChar($"{pre}│ {wLine.Trim()}", maxW - (idx + 1));
+                        output.Add(wrappedLines2.First());
+                        foreach (var wl2 in wrappedLines2.Skip(1))
+                        {
+                            output.Add($"{pre}│ {wl2.Trim()}");
+                        }
+                    }
+                    count++;
+                }
+                output2.Add(output.First());
+                foreach (var line in output.Skip(1))
+                {
+                    int i = maxW - (ParamParser.GetVisibleLength(line));
+                    if(i >= 0)
+                    {
+                        output2.Add($"{line}{string.Join("", Enumerable.Repeat(" ", i))}│");
+                    }
+                    else
+                    {
+                        output2.Add($"{line}");
+                    }
+                }
+                return string.Join("\n", output2).Pastel(Color.White);
+            }
+            else
+            {
+                lines.Add($"MUIPage Compilation Failed!");
+                lines.Add("{CLLine1}");
+                lines.Add($" │ Relevant Logs");
+                lines.Add("{CLLine2}");
+                int cidx = CompilerMessages.FindIndex(x => x.Severity == MessageSeverity.Error);
+                cidx = cidx - 3 > CompilerMessages.Count ? CompilerMessages.Count : cidx - 3;
+                foreach (var msg in CompilerMessages.Skip(cidx).Where(x => x.Severity != MessageSeverity.Debug))
+                {
+                    if (msg != CompilerFocusedMessage)
+                    {
+                        lines.Add($" ├╴  {msg.Message}");
+                    }
+                    else
+                    {
+                        lines.Add($" ├─> {msg.Message}".Pastel(Color.FromArgb(255, 255, 50, 50)));
+                    }
+                }
+                lines.Add("{CLLine3}");
+                lines.Add($"   │ Debug View");
+                lines.Add("{CLLine4}");
+                int ContextSize = 8;
+                if(CompilerFocusedMessage.MxmlLineNumber.Line != -1)
+                {
+                    var xmlCon = GetXmlContext(CompilerFocusedMessage.MxmlLineNumber.Line, ContextSize).Replace("\t","  ").Replace("\r", "");
+                    int lcount = CompilerFocusedMessage.MxmlLineNumber.Line - ContextSize;
+                    foreach (var ln in xmlCon.Split("\n"))
+                    {
+                        if (lcount == CompilerFocusedMessage.MxmlLineNumber.Line)
+                        {
+                            lines.Add($"   ├─{ln}".Pastel(Color.FromArgb(255, 255, 50, 50)));
+                        }
+                        else
+                        {
+                            lines.Add($"   ├╴{ln}");
+                        }
+                        lcount++;
+                    }
+                }
+                else
+                {
+                    lines.Add($"   ├╴Failed at {CompilerFocusedMessage.DateTime}");
+                    int warningCount = CompilerMessages.Where(x => x.Severity == MessageSeverity.Warning).Count();
+                    lines.Add($"   ├╴Compiled {Children.Count} objects in {CompilationFinished.TotalSeconds} seconds.");
+                }
+
+                int maxW = lines.Max(x => x.Length + 1);
+                maxW = maxW > Console.WindowWidth - 2? Console.WindowWidth - 2: maxW;
+                List<int> indexes = new();
+                indexes.Add(lines.IndexOf("{CLLine1}"));
+                indexes.Add(lines.IndexOf("{CLLine2}"));
+                indexes.Add(lines.IndexOf("{CLLine3}"));
+                indexes.Add(lines.IndexOf("{CLLine4}"));
+                lines[lines.IndexOf("{CLLine1}")] = $"═╤{string.Join("", Enumerable.Repeat("═", maxW - 2))}╕";
+                lines[lines.IndexOf("{CLLine2}")] = $" ├{string.Join("", Enumerable.Repeat("─", maxW - 2))}┤";
+                lines[lines.IndexOf("{CLLine3}")] = $" ╘═╤{string.Join("", Enumerable.Repeat("═", maxW - 4))}╡";
+                lines[lines.IndexOf("{CLLine4}")] = $"   ├{string.Join("", Enumerable.Repeat("─", maxW - 4))}┤";
+                lines.Add($"   └{string.Join("", Enumerable.Repeat("─", maxW - 4))}┘");
+                indexes.Add(lines.Count() - 1);
+
+                List<string> output = new();
+                List<string> output2 = new();
+                int count = 0;
+                foreach (var line in lines)
+                {
+                    List<string> wrappedLines = new();
+                    if (indexes.Contains(count))
+                    {
+                        wrappedLines = WrapTextByChar(line, maxW + 2);
+                    }
+                    else
+                    {
+                        wrappedLines = WrapTextByChar(line, maxW);
+                    }
+                    
+
+                    string fLine = wrappedLines.First();
+                    output.Add($"{fLine}");
+
+                    int idx = fLine.IndexOf('╴') != -1 ? fLine.IndexOf('╴') : fLine.IndexOf("├─>") != -1 ? fLine.IndexOf("├─>") + 1 : -1;
+                    string pre = idx != -1 ? fLine.Substring(0, idx - 1) : "";
+                    foreach (var wLine in wrappedLines.Skip(1))
+                    {
+                        var wrappedLines2 = WrapTextByChar($"{pre}│ {wLine.Trim()}", maxW - (ParamParser.GetVisibleLength(pre) + 1));
+                        output.Add(wrappedLines2.First());
+                        foreach (var wl2 in wrappedLines2.Skip(1))
+                        {
+                            output.Add($"{pre}│ {wl2.Trim()}");
+                        }
+                    }
+                    count++;
+                }
+                output2.Add(output.First());
+                foreach (var line in output.Skip(1))
+                {
+                    int i = maxW - (ParamParser.GetVisibleLength(line));
+                    if(i >= 0)
+                    {
+                        output2.Add($"{line}{string.Join("", Enumerable.Repeat(" ", i))}│");
+                    }
+                    else
+                    {
+                        output2.Add($"{line}");
+                    }
+                }
+                return string.Join("\n", output2).Pastel(Color.White);
+            }
+        }
 
         // Compiler Methods
         /// <summary>
         /// Given a name like "BackendClass.MemberName", tries to create a Binding object.
         /// </summary>
-        private Binding CreateBinding(string classAndMemberPath)
+        private Binding CreateBinding(string classAndMemberPath, object elmattr)
         {
+            var lineNumber = GetLineNumber(elmattr);
             if (string.IsNullOrWhiteSpace(classAndMemberPath))
             {
+                CompilerMessages.Add(new CompilerMessage($"The Binding path must not be empty.", MessageSeverity.Error, lineNumber));
                 Failed = true;
-                CompilerMessages.Add("The Binding path must not be empty.");
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return null;
             }
 
             var parts = classAndMemberPath.Split('.');
             if (parts.Length < 2)
             {
+                CompilerMessages.Add(new CompilerMessage($"The Binding \"{classAndMemberPath}\" is invalid. Should be in format \"BackendClass.MemberName\".", MessageSeverity.Error, lineNumber));
                 Failed = true;
-                CompilerMessages.Add($"The Binding \"{classAndMemberPath}\" is invalid. Should be in format \"BackendClass.MemberName\".");
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return null;
             }
 
             string initialClassName = parts[0];
             object currentObject = null;
+            CompilerMessages.Add(new CompilerMessage($"Creating a binding to {classAndMemberPath}.", MessageSeverity.Debug, lineNumber));
             Type currentType = null;
+
 
             if (BackendObjects.TryGetValue(initialClassName, out currentObject))
             {
+                CompilerMessages.Add(new CompilerMessage($"Found backend instanced object.", MessageSeverity.Debug, lineNumber));
                 currentType = currentObject.GetType();
             }
             else
             {
+                CompilerMessages.Add(new CompilerMessage($"Searching for static backend class.", MessageSeverity.Debug, lineNumber));
                 currentType = FindElementType(initialClassName);
                 if (currentType == null)
                 {
+                    CompilerMessages.Add(new CompilerMessage($"Cannot find class or backend object named \"{initialClassName}\".", MessageSeverity.Error, lineNumber));
                     Failed = true;
-                    CompilerMessages.Add($"Cannot find class or backend object named \"{initialClassName}\".");
+                    CompilerFocusedMessage = CompilerMessages.Last();
                     return null;
                 }
             }
 
+            CompilerMessages.Add(new CompilerMessage($"Searching for property", MessageSeverity.Debug, lineNumber));
             for (int i = 1; i < parts.Length; i++)
             {
                 string memberName = parts[i];
@@ -220,8 +644,9 @@ namespace MelonUI.Base
 
                     if (currentObject == null)
                     {
+                        CompilerMessages.Add(new CompilerMessage($"Property \"{memberName}\" on \"{currentType.Name}\" is null.", MessageSeverity.Error, lineNumber));
                         Failed = true;
-                        CompilerMessages.Add($"Property \"{memberName}\" on \"{currentType.Name}\" is null.");
+                        CompilerFocusedMessage = CompilerMessages.Last();
                         return null;
                     }
                     currentType = currentObject.GetType();
@@ -243,8 +668,9 @@ namespace MelonUI.Base
                 if (evt != null)
                 {
                     if (isLast) return new Binding(currentObject, evt);
+                    CompilerMessages.Add(new CompilerMessage($"Cannot traverse through event \"{memberName}\" in binding path.", MessageSeverity.Error, lineNumber));
                     Failed = true;
-                    CompilerMessages.Add($"Cannot traverse through event \"{memberName}\" in binding path.");
+                    CompilerFocusedMessage = CompilerMessages.Last();
                     return null;
                 }
 
@@ -258,13 +684,15 @@ namespace MelonUI.Base
                 }
 
                 // Not found
+                CompilerMessages.Add(new CompilerMessage($"Poperty \"{memberName}\" not found on type \"{currentType.Name}\".", MessageSeverity.Error, lineNumber));
                 Failed = true;
-                CompilerMessages.Add($"Member \"{memberName}\" not found on type \"{currentType.Name}\".");
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return null;
             }
 
+            CompilerMessages.Add(new CompilerMessage($"Couldn't find the property to bind to!", MessageSeverity.Error, lineNumber));
             Failed = true;
-            CompilerMessages.Add("Invalid Binding path!");
+            CompilerFocusedMessage = CompilerMessages.Last();
             return null;
         }
 
@@ -295,7 +723,7 @@ namespace MelonUI.Base
                         break;
 
                     default:
-                        SetProperty(this, attr.Name.LocalName, attr.Value, new Dictionary<string, string>());
+                        SetProperty(this, attr.Name.LocalName, attr.Value, new Dictionary<string, string>(), null);
                         break;
                 }
                 if (Failed) return false;
@@ -308,10 +736,12 @@ namespace MelonUI.Base
         /// </summary>
         private object ParseElement(XElement element)
         {
+            var lineNumber = GetLineNumber(element);
             if (element.Name.LocalName.Contains("."))
             {
                 Failed = true;
-                CompilerMessages.Add("Top-Level elements cannot have dots in their name.");
+                CompilerMessages.Add(new CompilerMessage($"Top-Level elements cannot have dots in their name.", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return null;
             }
 
@@ -319,24 +749,29 @@ namespace MelonUI.Base
             if (elementType == null)
             {
                 Failed = true;
-                CompilerMessages.Add($"Unkown element type \"{element.Name.LocalName}\".");
+                CompilerMessages.Add(new CompilerMessage($"Unkown element type \"{element.Name.LocalName}\".", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return null;
             }
 
+            CompilerMessages.Add(new CompilerMessage($"Creating instance of {elementType.Name}.", MessageSeverity.Debug, lineNumber));
             var uiElement = Activator.CreateInstance(elementType);
 
             // 1) Set properties from attributes
             var flagsFromElement = GetFlagsFromElement(element);
+            CompilerMessages.Add(new CompilerMessage($"Got flags \"{string.Join(", ",flagsFromElement.Select(x=>$"{x.Key}={x.Value}"))}\".", MessageSeverity.Debug, lineNumber));
+            CompilerMessages.Add(new CompilerMessage($"Setting Properties for {elementType.Name}.", MessageSeverity.Debug, lineNumber));
             foreach (var attr in element.Attributes())
             {
-                SetProperty(uiElement, attr.Name.LocalName, attr.Value, flagsFromElement);
+                SetProperty(uiElement, attr.Name.LocalName, attr.Value, flagsFromElement, attr);
                 if (Failed) return null;
             }
 
             // 2) Handle child elements
+            CompilerMessages.Add(new CompilerMessage($"Handling Properties for {elementType.Name}.", MessageSeverity.Info, lineNumber));
             foreach (var child in element.Elements())
             {
-                if (Failed) return null;
+                CompilerMessages.Add(new CompilerMessage($"Parsing {child.Name}.", MessageSeverity.Info, lineNumber));
 
                 if (child.Name.LocalName.Contains("."))
                 {
@@ -348,6 +783,10 @@ namespace MelonUI.Base
                     // Normal child UI element or custom object
                     if (!HandleChildElement(elementType, uiElement, child)) return null;
                 }
+
+                if (Failed) return null;
+
+                CompilerMessages.Add(new CompilerMessage($"{child.Name} was successfully parsed.", MessageSeverity.Success, GetLineNumber(child)));
             }
 
             return uiElement;
@@ -358,10 +797,12 @@ namespace MelonUI.Base
         /// </summary>
         private object ParseCustomObject(XElement element)
         {
+            var lineNumber = GetLineNumber(element);
             if (element.Name.LocalName.Contains("."))
             {
                 Failed = true;
-                CompilerMessages.Add("Top-Level objects cannot have dots.");
+                CompilerMessages.Add(new CompilerMessage($"Top-Level objects cannot have dots.", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return null;
             }
 
@@ -369,20 +810,23 @@ namespace MelonUI.Base
             if (objectType == null)
             {
                 Failed = true;
-                CompilerMessages.Add($"Unknown custom object type: {element.Name.LocalName}");
+                CompilerMessages.Add(new CompilerMessage($"Unknown custom object type: {element.Name.LocalName}.", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return null;
             }
 
             var customObject = Activator.CreateInstance(objectType);
 
             // Set properties from attributes
+            CompilerMessages.Add(new CompilerMessage($"Setting Properties for {element.Name.LocalName}.", MessageSeverity.Debug, lineNumber));
             foreach (var attr in element.Attributes())
             {
-                SetProperty(customObject, attr.Name.LocalName, attr.Value, new Dictionary<string, string>());
+                SetProperty(customObject, attr.Name.LocalName, attr.Value, new Dictionary<string, string>(), attr);
                 if (Failed) return customObject;
             }
 
             // Process nested elements
+            CompilerMessages.Add(new CompilerMessage($"Handling Properties for {element.Name.LocalName}.", MessageSeverity.Debug, lineNumber));
             foreach (var child in element.Elements())
             {
                 if (child.Name.LocalName.Contains("."))
@@ -393,7 +837,7 @@ namespace MelonUI.Base
                 {
                     var parsedChild = ParseMXMLElement(child);
                     if (parsedChild != null && !Failed)
-                        SetProperty(customObject, child.Name.LocalName, parsedChild, new Dictionary<string, string>());
+                        SetProperty(customObject, child.Name.LocalName, parsedChild, new Dictionary<string, string>(), child);
                     if (Failed) return customObject;
                 }
             }
@@ -409,7 +853,8 @@ namespace MelonUI.Base
             var childType = FindElementType(element.Name.LocalName);
             if (childType == null)
             {
-                CompilerMessages.Add($"Unknown type for element: {element.Name.LocalName}");
+                CompilerMessages.Add(new CompilerMessage($"Unknown type for element: {element.Name.LocalName}.", MessageSeverity.Error, GetLineNumber(element)));
+                CompilerFocusedMessage = CompilerMessages.Last();
                 Failed = true;
                 return null;
             }
@@ -443,7 +888,8 @@ namespace MelonUI.Base
             if (string.IsNullOrWhiteSpace(mxmlFlags))
             {
                 Failed = true;
-                CompilerMessages.Add("MXMLFlags cannot be empty, if you dont need to set any, remove the property.");
+                CompilerMessages.Add(new CompilerMessage($"MXMLFlags cannot be empty, if you dont need to set any, remove the property.", MessageSeverity.Error));
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return results;
             }
 
@@ -465,7 +911,8 @@ namespace MelonUI.Base
                     }
                 }
                 Failed = true;
-                CompilerMessages.Add($"MXMLFlag \"${mxmlFlags}\" is invalid!");
+                CompilerMessages.Add(new CompilerMessage($"MXMLFlag \"${mxmlFlags}\" is invalid!", MessageSeverity.Error));
+                CompilerFocusedMessage = CompilerMessages.Last();
             }
             return results;
         }
@@ -489,8 +936,9 @@ namespace MelonUI.Base
         /// <summary>
         /// Main property setting logic (with some sub-routes for special property types).
         /// </summary>
-        private void SetProperty(object element, string propertyName, object value, Dictionary<string, string> mxmlMeta)
+        private void SetProperty(object element, string propertyName, object value, Dictionary<string, string> mxmlMeta, object elmattr)
         {
+            var lineNumber = GetLineNumber(elmattr);
             var prop = element.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance | BindingFlags.FlattenHierarchy);
             if (prop == null || !prop.CanWrite)
             {
@@ -499,12 +947,13 @@ namespace MelonUI.Base
                     BindingFlags.Public | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
                 if (method != null)
                 {
-                    HandleMethodBinding(element, propertyName, value, method);
+                    HandleMethodBinding(element, propertyName, value, method, elmattr);
                 }
                 else
                 {
                     Failed = true;
-                    CompilerMessages.Add($"Element property \"{propertyName}\" cannot be found. (Are you using Fields or Properties? Is your Property Public?)");
+                    CompilerMessages.Add(new CompilerMessage($"Element property \"{propertyName}\" cannot be found. (Are you using Fields or Properties? Is your Property Public?).", MessageSeverity.Error, lineNumber));
+                    CompilerFocusedMessage = CompilerMessages.Last();
                 }
                 return;
             }
@@ -512,25 +961,37 @@ namespace MelonUI.Base
             // If string looks like {BackendProp}, handle binding
             if (value is string str && str.StartsWith("{") && str.EndsWith("}"))
             {
-                HandlePropertyBinding(element, propertyName, str);
+                CompilerMessages.Add(new CompilerMessage($"Property \"{propertyName}\" is set to bind.", MessageSeverity.Debug, lineNumber));
+                HandlePropertyBinding(element, propertyName, str, elmattr);
                 return;
             }
 
             // Determine property type (Action, List<T>, or simple property)
             var propType = prop.PropertyType;
             if (propType == typeof(Action))
+            {
+                CompilerMessages.Add(new CompilerMessage($"Property \"{propertyName}\" is an Action.", MessageSeverity.Debug, lineNumber));
                 HandleActionProperty(element, prop, value, mxmlMeta);
+
+            }
             else if (propType.IsGenericType && propType.GetGenericTypeDefinition() == typeof(List<>))
-                HandleListProperty(element, prop, value, propertyName);
+            {
+                CompilerMessages.Add(new CompilerMessage($"Property \"{propertyName}\" is a List of objects.", MessageSeverity.Debug, lineNumber));
+                HandleListProperty(element, prop, value, propertyName, elmattr);
+            }
             else
-                HandleSimpleProperty(element, prop, value, propertyName);
+            {
+                CompilerMessages.Add(new CompilerMessage($"Property \"{propertyName}\" is a primitive type.", MessageSeverity.Debug, lineNumber));
+                HandleSimpleProperty(element, prop, value, propertyName, elmattr);
+            }
         }
 
         /// <summary>
         /// Converts a value into a specified target type if possible.
         /// </summary>
-        private object ConvertToType(object value, Type targetType)
+        private object ConvertToType(object value, Type targetType, object element)
         {
+            var lineNumber = GetLineNumber(element);
             if (value == null)
             {
                 if (!targetType.IsValueType || (Nullable.GetUnderlyingType(targetType) != null))
@@ -540,23 +1001,31 @@ namespace MelonUI.Base
                 else
                 {
                     Failed = true;
-                    CompilerMessages.Add($"{targetType.Name} cannot be null, either set a value or remove the property from the MXML doc.");
+                    CompilerMessages.Add(new CompilerMessage($"\"{targetType.Name}\" cannot be set to a null value.", MessageSeverity.Error, lineNumber));
+                    CompilerFocusedMessage = CompilerMessages.Last();
                     return null;
                 }
             }
 
+            // Use CompilerTypeExtensions to convert value to targetType
+            CompilerMessages.Add(new CompilerMessage($"CompilerTypeExtensions disabled, skipping!", MessageSeverity.Debug, lineNumber));
+
+            CompilerMessages.Add(new CompilerMessage($"Attempting to convert to assignable object.", MessageSeverity.Debug, lineNumber));
             // If already assignable, return
             if (value != null && targetType.IsAssignableFrom(value.GetType()))
                 return value;
 
+            CompilerMessages.Add(new CompilerMessage($"Attempting to convert to a generic list.", MessageSeverity.Debug, lineNumber));
             // If target is List<T> and value is enumerable, convert accordingly
             if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(List<>))
-                return ConvertList(value, targetType);
+                return ConvertList(value, targetType, element);
 
+            CompilerMessages.Add(new CompilerMessage($"Attempting to use primitive type conversions.", MessageSeverity.Debug, lineNumber));
             // Try direct string conversions for primitives, enums, Color, etc.
             string strValue = value?.ToString() ?? string.Empty;
             if (TryPrimitiveConversion(strValue, targetType, out var result)) return result;
 
+            CompilerMessages.Add(new CompilerMessage($"Checking if a .Parse or .TryParse method exists.", MessageSeverity.Debug, lineNumber));
             // Try parse methods, e.g., T.Parse(string) or T.TryParse(string, out T)
             var parseMethod = targetType.GetMethods(BindingFlags.Static | BindingFlags.Public)
                 .FirstOrDefault(m =>
@@ -568,22 +1037,30 @@ namespace MelonUI.Base
             if (parseMethod != null && TryMethodParse(strValue, parseMethod, out var parsedVal))
                 return parsedVal;
 
+            CompilerMessages.Add(new CompilerMessage($"Attempting to find a string constuctor", MessageSeverity.Debug, lineNumber));
             // Try a string constructor
             var stringCtor = targetType.GetConstructor(new[] { typeof(string) });
             if (stringCtor != null) return stringCtor.Invoke(new object[] { strValue });
 
+            CompilerMessages.Add(new CompilerMessage($"Last try, can we Create an instance from a paramaterless constructor?", MessageSeverity.Debug, lineNumber));
             // As a last fallback, try parameterless constructor
             if (targetType.GetConstructor(Type.EmptyTypes) != null)
                 return Activator.CreateInstance(targetType);
 
             // If all else fails, mark as failed
             Failed = true;
-            CompilerMessages.Add($"The value \"{value}\" for property type \"{targetType}\" cannot be converted.");
+            CompilerMessages.Add(new CompilerMessage($"The value \"{value}\" for property type \"{targetType}\" cannot be converted.", MessageSeverity.Error, lineNumber));
+            CompilerFocusedMessage = CompilerMessages.Last();
             return value;
         }
 
 
         // Helper Sub-Methods
+        private (int line, int position) GetLineNumber(object element)
+        {
+            var lineInfo = element as IXmlLineInfo;
+            return lineInfo != null ? (lineInfo.LineNumber, lineInfo.LinePosition) : (-1, -1);
+        }
         private bool HandleAssembliesAttribute(string assembliesStr)
         {
             foreach (var str in assembliesStr.Split(','))
@@ -594,7 +1071,8 @@ namespace MelonUI.Base
                 if (ass == null)
                 {
                     Failed = true;
-                    CompilerMessages.Add($"Assembly \"{str}\" could not be found!");
+                    CompilerMessages.Add(new CompilerMessage($"Assembly \"{str}\" could not be found!", MessageSeverity.Error));
+                    CompilerFocusedMessage = CompilerMessages.Last();
                     return false;
                 }
                 Assemblies.Add(ass);
@@ -610,7 +1088,8 @@ namespace MelonUI.Base
                 if (propType == null)
                 {
                     Failed = true;
-                    CompilerMessages.Add($"Backend \"{str}\" could not be found!");
+                    CompilerMessages.Add(new CompilerMessage($"Backend \"{str}\" could not be found!", MessageSeverity.Error));
+                    CompilerFocusedMessage = CompilerMessages.Last();
                     return false;
                 }
                 try
@@ -626,11 +1105,13 @@ namespace MelonUI.Base
 
         private bool HandleNestedProperty(object uiElement, XElement child)
         {
+            var lineNumber = GetLineNumber(child);
             var parts = child.Name.LocalName.Split('.');
             if (parts.Length != 2)
             {
                 Failed = true;
-                CompilerMessages.Add($"Too many parts, mxml cannot currently handled nested properties like this!");
+                CompilerMessages.Add(new CompilerMessage($"Too many parts, mxml cannot currently handled nested properties like this!", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
                 return false;
             }
 
@@ -640,7 +1121,7 @@ namespace MelonUI.Base
             if (nestedEls.Count == 0)
             {
                 var flags = GetFlagsFromElement(child);
-                SetProperty(uiElement, propertyName, "", flags);
+                SetProperty(uiElement, propertyName, "", flags, child);
             }
             else if (nestedEls.Count == 1)
             {
@@ -648,7 +1129,7 @@ namespace MelonUI.Base
                 if (propertyValue != null)
                 {
                     var flags = GetFlagsFromElement(child);
-                    SetProperty(uiElement, propertyName, propertyValue, flags);
+                    SetProperty(uiElement, propertyName, propertyValue, flags, child);
                     if (Failed) return false;
                 }
             }
@@ -660,7 +1141,7 @@ namespace MelonUI.Base
                     if (childType == null)
                     {
                         Failed = true;
-                        CompilerMessages.Add($"Child element \"{ne.Name.LocalName}\" is unknown");
+                        CompilerMessages.Add(new CompilerMessage($"Child element \"{ne.Name.LocalName}\" is unknown", MessageSeverity.Error, lineNumber));
                         return false;
                     }
                     if (childType != null)
@@ -668,6 +1149,12 @@ namespace MelonUI.Base
                         if (typeof(UIElement).IsAssignableFrom(childType))
                         {
                             var childElement = ParseElement(ne);
+                            if(childElement == null)
+                            {
+                                Failed = true;
+                                CompilerMessages.Add(new CompilerMessage($"Failed to parse child element {ne.Name.LocalName}", MessageSeverity.Error, lineNumber));
+                                return false;
+                            }
                             AddElement((UIElement)childElement);
                         }
                         else
@@ -676,7 +1163,7 @@ namespace MelonUI.Base
                             if (childObject != null)
                             {
                                 var flags = GetFlagsFromElement(ne);
-                                SetProperty(uiElement, propertyName, childObject, flags);
+                                SetProperty(uiElement, propertyName, childObject, flags, child);
                                 if (Failed) return false;
                             }
                         }
@@ -691,7 +1178,9 @@ namespace MelonUI.Base
             var childType = FindElementType(child.Name.LocalName);
             if (Failed)
             {
-                CompilerMessages.Add($"Child element \"{child.Name.LocalName}\" is unknown");
+                CompilerMessages.Add(new CompilerMessage($"Child element \"{child.Name.LocalName}\" is unknown", MessageSeverity.Error));
+                CompilerFocusedMessage = CompilerMessages.Last();
+                Failed = true;
                 return false;
             }
             if (childType != null)
@@ -707,7 +1196,7 @@ namespace MelonUI.Base
                     var flags = GetFlagsFromElement(child);
                     foreach (var attr in child.Attributes())
                     {
-                        SetProperty(property, attr.Name.LocalName, attr.Value, flags);
+                        SetProperty(property, attr.Name.LocalName, attr.Value, flags, child);
                         if (Failed) return false;
                     }
                 }
@@ -715,14 +1204,15 @@ namespace MelonUI.Base
             return !Failed;
         }
 
-        private void HandleMethodBinding(object element, string propertyName, object value, MethodInfo method)
+        private void HandleMethodBinding(object element, string propertyName, object value, MethodInfo method, object elmattr)
         {
+            var lineNumber = GetLineNumber(elmattr);
             if (value is string strVal && strVal.StartsWith("{") && strVal.EndsWith("}"))
             {
                 string bindingRef = strVal.Substring(1, strVal.Length - 2).Trim();
                 try
                 {
-                    var binding = CreateBinding(bindingRef);
+                    var binding = CreateBinding(bindingRef, element);
                     if (binding.IsEvent)
                     {
                         Delegate handlerDelegate = Delegate.CreateDelegate(binding.EventInfo.EventHandlerType, element, method);
@@ -731,31 +1221,35 @@ namespace MelonUI.Base
                     }
                     else
                     {
-                        CompilerMessages.Add($"Binding \"{bindingRef}\" is not an event and cannot be assigned to method \"{propertyName}\".");
+                        CompilerMessages.Add(new CompilerMessage($"Binding \"{bindingRef}\" is not an event and cannot be assigned to method \"{propertyName}\".", MessageSeverity.Error, lineNumber));
+                        CompilerFocusedMessage = CompilerMessages.Last();
                         Failed = true;
                     }
                 }
                 catch (Exception ex)
                 {
                     Failed = true;
-                    CompilerMessages.Add($"Failed to bind \"{bindingRef}\" to method \"{propertyName}\": {ex.Message}");
+                    CompilerMessages.Add(new CompilerMessage($"Failed to bind \"{bindingRef}\" to method \"{propertyName}\": {ex.Message}.", MessageSeverity.Error, lineNumber));
+                    CompilerFocusedMessage = CompilerMessages.Last();
                 }
             }
             else
             {
-                CompilerMessages.Add($"Invalid binding value for method \"{propertyName}\". Expected a binding expression.");
+                CompilerMessages.Add(new CompilerMessage($"Invalid binding value for method \"{propertyName}\". Expected a binding expression.", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
                 Failed = true;
             }
         }
 
-        private void HandlePropertyBinding(object element, string propertyName, string str)
+        private void HandlePropertyBinding(object element, string propertyName, string str, object elmattr)
         {
+            var lineNumber = GetLineNumber(elmattr);
             string name = str.Replace("{", "").Replace("}", "");
-            var binding = CreateBinding(name);
+            var binding = CreateBinding(name, elmattr);
             if (binding == null)
             {
                 Failed = true;
-                CompilerMessages.Add($"Property Binding \"{name}\" could not be found. (Check your backend properties, make sure they are not fields)");
+                CompilerMessages.Add(new CompilerMessage($"Invalid binding value for method \"{propertyName}\". Expected a binding expression.", MessageSeverity.Error, lineNumber));
                 return;
             }
             try
@@ -767,7 +1261,7 @@ namespace MelonUI.Base
             catch (Exception er)
             {
                 Failed = true;
-                CompilerMessages.Add($"Property Binding \"{name}\" failed to bind. ({er.Message})");
+                CompilerMessages.Add(new CompilerMessage($"Property Binding \"{name}\" failed to bind. ({er.Message})", MessageSeverity.Error, lineNumber));
             }
         }
 
@@ -775,6 +1269,7 @@ namespace MelonUI.Base
         {
             if (value is UIElement uiVal)
             {
+                CompilerMessages.Add(new CompilerMessage($"Handling Action Property W/ MXML Flags and UIElements", MessageSeverity.Debug));
                 // If the UIElement has no Name, give it a unique one.
                 string tempName = string.IsNullOrEmpty(uiVal.Name) ? Guid.NewGuid().ToString() : uiVal.Name;
                 uiVal.Name = tempName;
@@ -823,6 +1318,7 @@ namespace MelonUI.Base
             }
             else
             {
+                CompilerMessages.Add(new CompilerMessage($"Handling Action Property W/ MXML Flags", MessageSeverity.Debug));
                 // A plain action with possible show/hide
                 Action gen = () =>
                 {
@@ -848,17 +1344,18 @@ namespace MelonUI.Base
             }
         }
 
-        private void HandleListProperty(object element, PropertyInfo prop, object value, string propertyName)
+        private void HandleListProperty(object element, PropertyInfo prop, object value, string propertyName, object elmattr)
         {
+            var lineNumber = GetLineNumber(elmattr);
             var propType = prop.PropertyType;
             var elementType = propType.GetGenericArguments()[0];
 
             if (value is System.Collections.IEnumerable en && !(value is string))
             {
-                var convertedValue = ConvertToType(value, propType);
+                var convertedValue = ConvertToType(value, propType, elmattr);
                 if (Failed)
                 {
-                    CompilerMessages.Add($"Element property \"{propertyName}\"/'s set value is invalid.");
+                    CompilerMessages.Add(new CompilerMessage($"Element property \"{propertyName}\" has an invalid value.", MessageSeverity.Error, lineNumber));
                     return;
                 }
                 prop.SetValue(element, convertedValue);
@@ -871,10 +1368,10 @@ namespace MelonUI.Base
                     listInstance = Activator.CreateInstance(propType);
                     prop.SetValue(element, listInstance);
                 }
-                var convertedItem = ConvertToType(value, elementType);
+                var convertedItem = ConvertToType(value, elementType, elmattr);
                 if (Failed)
                 {
-                    CompilerMessages.Add($"Element property \"{propertyName}\"/'s set value is invalid.");
+                    CompilerMessages.Add(new CompilerMessage($"Element property \"{propertyName}\" has an invalid value.", MessageSeverity.Error, lineNumber));
                     return;
                 }
                 var addMethod = propType.GetMethod("Add");
@@ -882,18 +1379,18 @@ namespace MelonUI.Base
             }
         }
 
-        private void HandleSimpleProperty(object element, PropertyInfo prop, object value, string propertyName)
+        private void HandleSimpleProperty(object element, PropertyInfo prop, object value, string propertyName, object elmattr)
         {
-            var convertedValue = ConvertToType(value, prop.PropertyType);
+            var convertedValue = ConvertToType(value, prop.PropertyType, elmattr);
             if (Failed)
             {
-                CompilerMessages.Add($"Element property \"{propertyName}\"/'s set value is invalid.");
+                CompilerMessages.Add(new CompilerMessage($"Element property \"{propertyName}\" has an invalid value.", MessageSeverity.Error, GetLineNumber(elmattr)));
                 return;
             }
             prop.SetValue(element, convertedValue);
         }
 
-        private object ConvertList(object value, Type targetType)
+        private object ConvertList(object value, Type targetType, object elmattr)
         {
             var elementType = targetType.GetGenericArguments()[0];
             if (value is System.Collections.IEnumerable en && !(value is string))
@@ -903,7 +1400,7 @@ namespace MelonUI.Base
 
                 foreach (var item in en)
                 {
-                    var convertedItem = ConvertToType(item, elementType);
+                    var convertedItem = ConvertToType(item, elementType, elmattr);
                     if (Failed) return listInstance;
                     addMethod.Invoke(listInstance, new[] { convertedItem });
                 }
@@ -911,7 +1408,7 @@ namespace MelonUI.Base
             }
             else
             {
-                var singleConverted = ConvertToType(value, elementType);
+                var singleConverted = ConvertToType(value, elementType, elmattr);
                 if (Failed) return null;
                 var singleList = Activator.CreateInstance(targetType);
                 var addMethod = targetType.GetMethod("Add");
@@ -998,17 +1495,16 @@ namespace MelonUI.Base
         {
             color = default;
             var split = strValue.Split(",");
-            if (split.Length != 4) return false;
+            if (split.Length != 3) return false;
 
-            if (!int.TryParse(split[0], out var a)
-                || !int.TryParse(split[1], out var r)
-                || !int.TryParse(split[2], out var g)
-                || !int.TryParse(split[3], out var b))
+            if (!int.TryParse(split[0], out var r)
+                || !int.TryParse(split[1], out var g)
+                || !int.TryParse(split[2], out var b))
             {
                 return false;
             }
 
-            color = Color.FromArgb(a, r, g, b);
+            color = Color.FromArgb(255, r, g, b);
             return true;
         }
 

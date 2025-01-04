@@ -15,16 +15,31 @@
 
 	</TextBlock>
 
-	<Line X="0"
-		  ShowBorder="true"
+
+	
+<Line X="0"
+		  ShowBorder="false"
 		  AntiAliased="true"
-		  LineWidth="6"
-		  RoundCaps="false"
+		  DoubleWidth="true"
 		  Softness="2"
 		  Intensity="1"
 		  Y="13%"
 		  X1="{TestPageBackend.CurX1}" Y1="{TestPageBackend.CurY1}"
 		  X2="{TestPageBackend.CurX2}" Y2="{TestPageBackend.CurY2}"
+	 	  Foreground="{TestPageBackend.AntiLineColor}"
+		  Width="95%"
+		  Height="80%"/>
+
+<Line X="0"
+		  ShowBorder="false"
+		  AntiAliased="false"
+		  DoubleWidth="true"
+		  Foreground="{TestPageBackend.LineColor}"
+		  Softness="2"
+		  Intensity="1"
+		  Y="13%"
+		  X1="{TestPageBackend.CurY2}" Y1="{TestPageBackend.CurX2}"
+		  X2="{TestPageBackend.CurY1}" Y2="{TestPageBackend.CurX1}"
 		  Width="95%"
 		  Height="80%"/>
 

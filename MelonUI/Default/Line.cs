@@ -23,13 +23,11 @@ namespace MelonUI.Default
         [Binding]
         private bool antiAliased;
         [Binding]
-        private float lineWidth = 1.0f;
+        private float intensity = 1.0f;
         [Binding]
-        private float intensity = 1.0f;     // Overall brightness/opacity multiplier (0-1)
+        private float softness = 1.0f;
         [Binding]
-        private float softness = 1.0f;      // Edge softness multiplier (higher = softer edges)
-        [Binding]
-        private bool roundCaps = true;      // Whether to use rounded end caps
+        private bool doubleWidth = false;
         public int ActualX1;
         public int ActualY1;
         public int ActualX2;
@@ -37,6 +35,7 @@ namespace MelonUI.Default
         public Line()
         {
             Height = "1";
+            RespectBackgroundOnDraw = false;
         }
         protected override void RenderContent(ConsoleBuffer buffer)
         {
@@ -64,6 +63,20 @@ namespace MelonUI.Default
         }
         private void RenderStraightLine(ConsoleBuffer buffer, bool isHorizontal, bool isNegative)
         {
+            float adjustedIntensity = intensity * Intensity;
+            if (Softness != 1.0f)
+            {
+                adjustedIntensity = (float)Math.Pow(adjustedIntensity, 1.0f / Softness);
+            }
+
+            // Create a color with the appropriate alpha for blending
+            Color baseColor = Foreground; // Replace this with your desired starting color
+            int red = (int)(baseColor.R * adjustedIntensity);
+            int green = (int)(baseColor.G * adjustedIntensity);
+            int blue = (int)(baseColor.B * adjustedIntensity);
+
+            Color pixelColor = Color.FromArgb(red, green, blue);
+
             int x = ActualX1;
             int y = ActualY1;
             int x2 = ActualX2;
@@ -75,7 +88,7 @@ namespace MelonUI.Default
 
             for (int i = 0; i <= length; i++)
             {
-                buffer.SetPixel(x, y, '█', Foreground, Background);
+                buffer.SetPixel(x, y, '█', pixelColor, pixelColor);
                 x += isHorizontal ? step : 0;
                 y += isHorizontal ? 0 : step;
             }
@@ -129,33 +142,52 @@ namespace MelonUI.Default
             int y = y1;
 
             // Step F: main loop
-            for (int x = x1; x <= x2; x++)
+            if (doubleWidth)
             {
-                if (isSteep)
+                for(int x = x1; x <= x2; x++)
                 {
-                    buffer.SetPixel(y, x, '█', Foreground, Background);
-                }
-                else
-                {
-                    buffer.SetPixel(x, y, '█', Foreground, Background);
+                    if (isSteep)
+                    {
+                        buffer.SetPixel(y, x, '█', Foreground, Background);
+                        buffer.SetPixel(y + 1, x, '█', Foreground, Background);
+                    }
+                    else
+                    {
+                        buffer.SetPixel(x, y, '█', Foreground, Background);
+                        buffer.SetPixel(x + 1, y, '█', Foreground, Background);
 
-                }
+                    }
 
-                if (decision > 0)
-                {
-                    y += yStep;
-                    decision -= 2 * dx;
+                    if (decision > 0)
+                    {
+                        y += yStep;
+                        decision -= 2 * dx;
+                    }
+                    decision += 2 * dy;
                 }
-                decision += 2 * dy;
             }
+            else
+            {
+                for(int x = x1; x <= x2; x++)
+                {
+                    if (isSteep)
+                    {
+                        buffer.SetPixel(y, x, '█', Foreground, Background);
+                    }
+                    else
+                    {
+                        buffer.SetPixel(x, y, '█', Foreground, Background);
 
-            buffer.SetPixel(ActualX1, ActualY1, '█', Color.Green, Background);
-            buffer.SetPixel(ActualX2, ActualY2, '█', Color.Red, Background);
+                    }
 
-            buffer.WriteString(1, 1, $"dx/y: ({dx},{dy})", Foreground, Background);
-            buffer.WriteString(1, 2, $"Step: ({yStep})", Foreground, Background);
-            buffer.WriteString(1, 3, $"Steep: ({isSteep})", Foreground, Background);
-            
+                    if (decision > 0)
+                    {
+                        y += yStep;
+                        decision -= 2 * dx;
+                    }
+                    decision += 2 * dy;
+                }
+            }            
         }
 
 
@@ -164,7 +196,6 @@ namespace MelonUI.Default
             // Clamp parameters to valid ranges
             Intensity = Math.Max(0.0f, Math.Min(1.0f, Intensity));
             Softness = Math.Max(0.1f, Softness);
-            LineWidth = Math.Max(1.0f, LineWidth);
 
             // Helper function to plot a pixel with intensity
             void Plot(int x, int y, float intensity)
@@ -183,113 +214,21 @@ namespace MelonUI.Default
                 }
 
                 // Create a color with the appropriate alpha for blending
-                int alpha = (int)(adjustedIntensity * 255);
-                Color pixelColor = Color.FromArgb(
-                    alpha,
-                    Math.Max(0,  alpha),
-                    Math.Max(0,  alpha),
-                    Math.Max(0,  alpha)
-                );
+                //int alpha = (int)(adjustedIntensity * 255);
+                Color baseColor = Foreground; // Replace this with your desired starting color
+                int red = (int)(baseColor.R * adjustedIntensity);
+                int green = (int)(baseColor.G * adjustedIntensity);
+                int blue = (int)(baseColor.B * adjustedIntensity);
+
+                Color pixelColor = Color.FromArgb(red, green, blue);
 
                 buffer.SetPixel(x, y, '█', pixelColor, pixelColor);
             }
 
             // Handle wide lines
-            if (LineWidth > 1.0f)
-            {
-                DrawWideAntialiasedLine(buffer, x0, y0, x1, y1, Plot);
-            }
-            else
-            {
-                DrawSingleLine(buffer, x0, y0, x1, y1, Plot);
-            }
+            DrawSingleLine(buffer, x0, y0, x1, y1, Plot);
         }
 
-        private void DrawWideAntialiasedLine(ConsoleBuffer buffer, int x0, int y0, int x1, int y1, Action<int, int, float> plot)
-        {
-            float dx = x1 - x0;
-            float dy = y1 - y0;
-            float length = (float)Math.Sqrt(dx * dx + dy * dy);
-
-            // Handle degenerate case
-            if (length < 0.001f)
-            {
-                if (RoundCaps)
-                {
-                    DrawEndCap(buffer, x0, y0, LineWidth, plot);
-                }
-                return;
-            }
-
-            // Calculate normal vector
-            float nx = -dy / length;
-            float ny = dx / length;
-
-            // Calculate offset points for the wide line
-            float halfWidth = LineWidth / 2.0f;
-
-            // Draw the main line body using a series of thin lines
-            int steps = Math.Max(2, (int)(LineWidth * 2));
-            float stepSize = LineWidth / steps;
-
-            // Function to determine if we're at an edge
-            bool IsEdgeLine(float offset)
-            {
-                return Math.Abs(Math.Abs(offset) - halfWidth) < stepSize;
-            }
-
-            for (float offset = -halfWidth; offset <= halfWidth; offset += stepSize)
-            {
-                int newX0 = x0 + (int)(nx * offset);
-                int newY0 = y0 + (int)(ny * offset);
-                int newX1 = x1 + (int)(nx * offset);
-                int newY1 = y1 + (int)(ny * offset);
-
-                if (IsEdgeLine(offset))
-                {
-                    // Only edge lines get anti-aliasing from Wu's algorithm
-                    DrawSingleLine(buffer, newX0, newY0, newX1, newY1, plot);
-                }
-                else
-                {
-                    // Interior lines are drawn with full intensity
-                    void SolidPlot(int x, int y, float intensity)
-                    {
-                        plot(x, y, 1.0f);
-                    }
-                    DrawSingleLine(buffer, newX0, newY0, newX1, newY1, SolidPlot);
-                }
-            }
-
-            // Draw end caps if enabled
-            if (RoundCaps)
-            {
-                DrawEndCap(buffer, x0, y0, LineWidth, plot);
-                DrawEndCap(buffer, x1, y1, LineWidth, plot);
-            }
-        }
-        private void DrawEndCap(ConsoleBuffer buffer, int centerX, int centerY, float width, Action<int, int, float> plot)
-        {
-            float radius = width / 2.0f;
-            int radiusCeil = (int)Math.Ceiling(radius);
-
-            for (int y = -radiusCeil; y <= radiusCeil; y++)
-            {
-                for (int x = -radiusCeil; x <= radiusCeil; x++)
-                {
-                    float distance = (float)Math.Sqrt(x * x + y * y);
-                    if (distance <= radius)
-                    {
-                        float intensity = 1.0f;
-                        if (distance > radius - 1)
-                        {
-                            intensity = radius - distance;
-                        }
-                        plot(centerX + x, centerY + y, intensity);
-                    }
-                }
-            }
-        }
 
         private void DrawSingleLine(ConsoleBuffer buffer, int x0, int y0, int x1, int y1, Action<int, int, float> plot)
         {
@@ -327,18 +266,22 @@ namespace MelonUI.Default
             int xpxl1 = (int)xend;
             int ypxl1 = (int)Math.Floor(yend);
 
+            float frac = yend - (float)Math.Floor(yend);
+            float intensity1 = Math.Min(1.0f, (1.0f - frac) * xgap);
+            float intensity2 = Math.Min(1.0f, frac * xgap);
+
             if (steep)
             {
-                plot(ypxl1, xpxl1, (float)((1 - (yend - Math.Floor(yend))) * xgap));
-                plot(ypxl1 + 1, xpxl1, (float)((yend - Math.Floor(yend)) * xgap));
+                plot(ypxl1, xpxl1, intensity1);
+                plot(ypxl1 + 1, xpxl1, intensity2);
             }
             else
             {
-                plot(xpxl1, ypxl1, (float)((1 - (yend - Math.Floor(yend))) * xgap));
-                plot(xpxl1, ypxl1 + 1, (float)((yend - Math.Floor(yend)) * xgap));
+                plot(xpxl1, ypxl1, intensity1);
+                plot(xpxl1, ypxl1 + 1, intensity2);
             }
 
-            float intery = yend + gradient;
+            //float intery = yend + gradient;
 
             // Handle second endpoint
             xend = (float)Math.Round((double)x1);
@@ -347,15 +290,19 @@ namespace MelonUI.Default
             int xpxl2 = (int)xend;
             int ypxl2 = (int)Math.Floor(yend);
 
+            frac = yend - (float)Math.Floor(yend);
+            intensity1 = Math.Min(1.0f, (1.0f - frac) * xgap);
+            intensity2 = Math.Min(1.0f, frac * xgap);
+
             if (steep)
             {
-                plot(ypxl2, xpxl2, (float)((1 - (yend - Math.Floor(yend))) * xgap));
-                plot(ypxl2 + 1, xpxl2, (float)((yend - Math.Floor(yend)) * xgap));
+                plot(ypxl2, xpxl2, intensity1);
+                plot(ypxl2 + 1, xpxl2, intensity2);
             }
             else
             {
-                plot(xpxl2, ypxl2, (float)((1 - (yend - Math.Floor(yend))) * xgap));
-                plot(xpxl2, ypxl2 + 1, (float)((yend - Math.Floor(yend)) * xgap));
+                plot(xpxl2, ypxl2, intensity1);
+                plot(xpxl2, ypxl2 + 1, intensity2);
             }
 
             // Main line drawing loop
@@ -363,10 +310,11 @@ namespace MelonUI.Default
             {
                 for (int x = xpxl1 + 1; x < xpxl2; x++)
                 {
+                    float intery = y0 + gradient * ((x) - x0);
                     int y = (int)Math.Floor(intery);
-                    float frac = intery - y;
-                    plot(y, x, 1 - frac);
-                    plot(y + 1, x, frac);
+                    float fpart = intery - y;
+                    plot(y, x, Math.Min(1.0f, 1.0f - fpart));
+                    plot(y + 1, x, Math.Min(1.0f, fpart));
                     intery += gradient;
                 }
             }
@@ -374,10 +322,11 @@ namespace MelonUI.Default
             {
                 for (int x = xpxl1 + 1; x < xpxl2; x++)
                 {
+                    float intery = y0 + gradient * ((x) - x0);
                     int y = (int)Math.Floor(intery);
-                    float frac = intery - y;
-                    plot(x, y, 1 - frac);
-                    plot(x, y + 1, frac);
+                    float fpart = intery - y;
+                    plot(x, y, Math.Min(1.0f, 1.0f - fpart));
+                    plot(x, y + 1, Math.Min(1.0f, fpart));
                     intery += gradient;
                 }
             }
