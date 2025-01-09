@@ -41,15 +41,21 @@ namespace MelonUI.Helpers
         public static int GetVisibleLength(string text)
         {
             int length = 0;
-            for (int i = 0; i < text.Length; i++)
+            int i = 0;
+            while (i < text.Length)
             {
-                if (text[i] == '\x1b' && i + 1 < text.Length && text[i + 1] == '[')
+                if (text[i] == '\x1b')
                 {
-                    i = text.IndexOf('m', i);
-                    if (i == -1) break;
-                    continue;
+                    i++;
+                    while (i < text.Length && !char.IsLetter(text[i]))
+                        i++;
+                    if (i < text.Length) i++;
                 }
-                length++;
+                else
+                {
+                    length++;
+                    i++;
+                }
             }
             return length;
         }

@@ -23,8 +23,8 @@ TextBlock tb = new TextBlock()
     Height = "50%",
 };
 
-//string wpxml = File.ReadAllText(@"D:\Documents\GitHub\MelonUI\MelonUIDemo\Pages\DemoPage.xml");
-string wpxml = File.ReadAllText(@"C:\Users\jhset\Desktop\test.xml");
+string wpxml = File.ReadAllText(@"D:\Documents\GitHub\MelonUI\MelonUIDemo\Pages\DemoWelcome.xml");
+//string wpxml = File.ReadAllText(@"C:\Users\jhset\Desktop\test.xml");
 var WelcomePage = new MUIPage();
 var wpcompiled = WelcomePage.Compile(wpxml);
 

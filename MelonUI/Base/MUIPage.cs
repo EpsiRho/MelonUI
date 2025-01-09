@@ -424,8 +424,11 @@ namespace MelonUI.Base
                 lines[lines.IndexOf("{CLLine2}")] = $" ├{string.Join("", Enumerable.Repeat("─", maxW - 2))}┤";
                 lines[lines.IndexOf("{CLLine3}")] = $" ╘═╤{string.Join("", Enumerable.Repeat("═", maxW - 4))}╡";
                 lines[lines.IndexOf("{CLLine4}")] = $"   ├{string.Join("", Enumerable.Repeat("─", maxW - 4))}┤";
-                lines[lines.IndexOf("{CLLine5}")] = $"   ╘═╤{string.Join("", Enumerable.Repeat("═", maxW - 6))}╡";
-                lines[lines.IndexOf("{CLLine6}")] = $"     ├{string.Join("", Enumerable.Repeat("─", maxW - 6))}┤";
+                if (warningCount > 0)
+                {
+                    lines[lines.IndexOf("{CLLine5}")] = $"   ╘═╤{string.Join("", Enumerable.Repeat("═", maxW - 6))}╡";
+                    lines[lines.IndexOf("{CLLine6}")] = $"     ├{string.Join("", Enumerable.Repeat("─", maxW - 6))}┤";
+                }
                 lines.Add($"     └{string.Join("", Enumerable.Repeat("─", maxW - 6))}┘");
                 indexes.Add(lines.Count() - 1);
 

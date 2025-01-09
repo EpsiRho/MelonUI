@@ -19,7 +19,7 @@
   
 	</TextBlock>
 
-	<TextBlock Text="Hewwo"
+	<TextBlock Text="Yippee It works! [Color(0,255,0)]Pickle [ColorReset]Candy"
 		   X="0"
 		   Y="0"
 		   FocusedForeground="255,255,255"
@@ -43,11 +43,15 @@
 		   XYAlignment="CenterLeft"
 		   Width="30%"
 		   Height="22%"/>
-	<ProgressBar Width="20%"
-		     Height="3"
-		     Name="TestPB"
-		     XYAlignment="Centered"
-		     ProgressValue="0.4"/>
+
+	<TextBlock Text="{TestPageBackend.TestText}"
+		   X="0"
+		   Y="0"
+		   FocusedForeground="255,255,255"
+		   TextAlignment="Centered"
+		   XYAlignment="Centered"
+		   Width="30%"
+		   Height="22%"/>
 
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
@@ -62,7 +66,9 @@
 		   Y="0"
 		   FocusedForeground="255,255,255"
 		   TextAlignment="BottomLeft"
-		   XYAlignment="BottomLeft"/>
+		   XYAlignment="BottomLeft"
+		   Width="30%"
+		   Height="22%"/>
 
 	<OptionsMenu>
 		<OptionsMenu.Options>

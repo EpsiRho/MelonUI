@@ -70,8 +70,6 @@ public class BindingGenerator : IIncrementalGenerator
             fieldDeclaration.Modifiers.ToString(),
             usings);
 
-        //File.WriteAllLines($"C:/Users/jhset/Desktop/GeneratorTesting/cock.cs", usings);
-
         return fi;
     }
 

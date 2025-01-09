@@ -97,7 +97,7 @@
 		   (COMPLETE) Ansi color string -> Colored ConsoleBuffer
 		   (COMPLETE) Support for Ansi color strings in TextBlock.Text
 		   - Support for Ansi color strings in other UIElements(?)
-		   
+		 - UI Snapshot
 		 (COMPLETE) CWM disable title + status bar
 		 (COMPLETE) CWM Add custom global controls
 		 - Unit Testing
