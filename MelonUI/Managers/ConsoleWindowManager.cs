@@ -268,6 +268,17 @@ namespace MelonUI.Managers
 
             return children;
         }
+        public void ResetSubChildrenRecalculation(List<UIElement> elms)
+        {
+            foreach (var elm in elms)
+            {
+                if (elm.ConsiderForFocus && elm.IsVisible)
+                {
+                    elm.NeedsRecalculation = true;
+                }
+                ResetSubChildrenRecalculation(elm.Children);
+            }
+        }
         public UIElement GetSubChildByGuid(string uid, List<UIElement> elms = null)
         {
             if(elms == null)
@@ -438,10 +449,7 @@ namespace MelonUI.Managers
             {
                 if (MainBuffer.Width != Console.WindowWidth || MainBuffer.Height != Console.WindowHeight)
                 {
-                    Parallel.ForEach(RootElements, (element) =>
-                    {
-                        element.NeedsRecalculation = true;
-                    });
+                    ResetSubChildrenRecalculation(RootElements);
                 }
                 UpdateBufferSize();
                 MainBuffer.Clear(Color.FromArgb(0,0,0,0));
@@ -485,6 +493,7 @@ namespace MelonUI.Managers
                     }
                     else
                     {
+                        element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
                         bool bufferFound = false;
                         if (element.EnableCaching)
                         {
@@ -499,7 +508,6 @@ namespace MelonUI.Managers
 
                         if (!bufferFound)
                         {
-                            element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
                             elementBuffer = element.Render();
 
                             if (element.EnableCaching)

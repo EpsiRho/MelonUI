@@ -105,7 +105,7 @@
 		   - Button
 		   - Button Panel
 		   - FilePicker
-		   - FPSCounter
+		   (COMPLETE) FPSCounter
 		   - GridContainer
 		   - Line
 		   - MusicPlayer
@@ -117,6 +117,7 @@
 		   - Waveform
 		   - Worklog
 		 - Documentation
+		 - "Auto" Layout type
 		 (COMPLETE) Make UIElement Background transparency work correctly everywhere pls
 		 
 		 ## Known Issues

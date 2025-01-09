@@ -407,6 +407,10 @@ namespace MelonUI.Base
             {
                 return parentSize / 2;
             }
+            else if (value == "auto")
+            {
+                return parentSize - 1;
+            }
             else if (int.TryParse(value, out int absolute))
             {
                 return absolute;

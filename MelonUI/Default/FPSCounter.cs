@@ -16,6 +16,8 @@ namespace MelonUI.Default
         {
             _stopwatch = new Stopwatch();
             _stopwatch.Start();
+            MinWidth = "5";
+            MinHeight = "4";
         }
 
         public void OnFrameRendered(object sender, EventArgs e)

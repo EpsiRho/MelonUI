@@ -32,7 +32,7 @@ namespace MelonUI.Base
         public List<string> Backends = new();
         public Dictionary<string, object> BackendObjects = new();
         public Dictionary<Type, Func<object, object>> TypeExtensions = new();
-        private Dictionary<UIElement, ConsoleBuffer> BufferCache = new();
+        private Dictionary<string, ConsoleBuffer> BufferCache = new();
         public TimeSpan CompilationFinished = TimeSpan.MinValue;
         //public MessageSeverity CompilerVerbosity = MessageSeverity.Debug | MessageSeverity.Info | MessageSeverity.Warning | MessageSeverity.Error  | MessageSeverity.Success;
 
@@ -1361,6 +1361,13 @@ namespace MelonUI.Base
 
         private void HandleActionProperty(object element, PropertyInfo prop, object value, Dictionary<string, string> mxmlMeta)
         {
+            foreach(var meta in mxmlMeta.Values)
+            {
+                if (!Children.Any(x=>x.Name == meta.Split(":")[0]))
+                {
+                    CompilerMessages.Add(new CompilerMessage($"Couldn't find UIElement \"{meta.Split(":")[0]}\" on this page, this code will error if a UIElement by this name isn't added to the children after compilation!", MessageSeverity.Warning));
+                }
+            }
             if (value is UIElement uiVal)
             {
                 CompilerMessages.Add(new CompilerMessage($"Handling Action Property W/ MXML Flags and UIElements", MessageSeverity.Debug));
@@ -1390,8 +1397,11 @@ namespace MelonUI.Base
                         bool focus = info.Length == 2 ? bool.Parse(info[1]) : true;
                         var showElm = Children.Find(x => x.Name == mxmlMeta["Show"]);
                         showElm.IsVisible = true;
-                        showElm.IsFocused = true;
-                        ParentWindow.MoveFocus(showElm);
+                        if (focus)
+                        {
+                            showElm.IsFocused = true;
+                            ParentWindow.MoveFocus(showElm);
+                        }
                     }
                 };
 
@@ -1425,10 +1435,10 @@ namespace MelonUI.Base
                     {
                         string[] info = mxmlMeta["Show"].Split(":");
                         bool focus = info.Length == 2 ? bool.Parse(info[1]) : true;
-                        var showElm = Children.Find(x => x.Name == mxmlMeta["Show"]);
+                        var showElm = Children.Find(x => x.Name == mxmlMeta["Show"].Split(":")[0]);
+                        showElm.IsVisible = true;
                         if (focus)
                         {
-                            showElm.IsVisible = true;
                             showElm.IsFocused = true;
                             ParentWindow.MoveFocus(showElm);
                         }
@@ -1682,7 +1692,7 @@ namespace MelonUI.Base
                     RemoveElement(item);
                 }
                 var visibleElms = Children.Where(x => x.IsVisible).ToList();
-                Parallel.ForEach(visibleElms, (element) =>
+                foreach (var element in visibleElms)
                 {
                     ConsoleBuffer elementBuffer = null;
                     if (element.NeedsRecalculation)
@@ -1694,18 +1704,19 @@ namespace MelonUI.Base
                         {
                             lock (BufferCache)
                             {
-                                BufferCache[element] = elementBuffer;
+                                BufferCache[element.UID] = elementBuffer;
                             }
                         }
                     }
                     else
                     {
+                        element.CalculateLayout(startXOffset, startYOffset, innerWidth, innerHeight);
                         bool bufferFound = false;
                         if (element.EnableCaching)
                         {
                             lock (BufferCache)
                             {
-                                if (BufferCache.TryGetValue(element, out elementBuffer))
+                                if (BufferCache.TryGetValue(element.UID, out elementBuffer))
                                 {
                                     bufferFound = true;
                                 }
@@ -1714,21 +1725,20 @@ namespace MelonUI.Base
 
                         if (!bufferFound)
                         {
-                            element.CalculateLayout(startXOffset, startYOffset, innerWidth, innerHeight);
                             elementBuffer = element.Render();
 
                             if (element.EnableCaching)
                             {
                                 lock (BufferCache)
                                 {
-                                    BufferCache[element] = elementBuffer;
+                                    BufferCache[element.UID] = elementBuffer;
                                 }
                             }
                         }
                     }
 
                     objectBuffers.Add((elementBuffer, element));
-                });
+                };
 
                 var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
                 foreach (var element in lst)

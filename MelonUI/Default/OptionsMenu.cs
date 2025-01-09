@@ -9,7 +9,7 @@ using static System.Net.Mime.MediaTypeNames;
 
 namespace MelonUI.Default
 {
-    public partial class MenuItem : UIElement
+    public partial class MenuItem
     {
         [Binding]
         private string _Option;
@@ -23,11 +23,6 @@ namespace MelonUI.Default
         {
             Option = option;
             OnSelect = onSelect;
-        }
-
-        protected override void RenderContent(ConsoleBuffer buffer)
-        {
-            // Dont
         }
     }
     public partial class OptionsMenu : UIElement

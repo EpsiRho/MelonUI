@@ -1,0 +1,42 @@
+﻿<MUIPage Width="99%"
+		 Height="90%"
+		 Name="DemoPage"
+		 Assemblies="MelonUI,MelonUIDemo"
+		 ShowBorder="false"
+		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing,MelonUIDemo.Backends"
+		 Backends="TestPageBackend,DemoWelcomeBackend">
+	<OptionsMenu Name="MUIDemoMenu"
+				 X="0"
+				 Y="0"
+				 Width="50%"
+				 Height="60%">
+		<OptionsMenu.Options>
+			<MenuItem Option="Open MXML Viewer"/>
+			<MenuItem Option="Show Line Demo">
+				<MenuItem.OnSelect MXMLFlags="Show(DemoLine:false)"/>
+			</MenuItem>
+		</OptionsMenu.Options>
+
+	</OptionsMenu>
+
+	<Line Name="DemoLine"
+		  X="50%"
+		  Y="0"
+		  ShowBorder="false"
+		  AntiAliased="true"
+		  DoubleWidth="true"
+		  Softness="2"
+		  IsVisible="false"
+		  Intensity="1"
+		  X1="{TestPageBackend.CurX1}" Y1="{TestPageBackend.CurY1}"
+		  X2="{TestPageBackend.CurX2}" Y2="{TestPageBackend.CurY2}"
+	 	  Foreground="{TestPageBackend.AntiLineColor}"
+		  Width="95%"
+		  Height="92%"/>
+
+	<FPSCounter XYAlignment="TopRight"
+				Width="5"
+				Height="4"
+				OnFrameRendered="{DemoWelcomeBackend.CWM.FrameRendered}"/>
+
+</MUIPage>

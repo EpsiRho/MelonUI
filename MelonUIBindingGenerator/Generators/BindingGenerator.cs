@@ -2,35 +2,19 @@
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using System.Collections.Immutable;
-using System.Diagnostics;
 using System.Linq;
 using System.Text;
 
 namespace MelonUIBindingGenerator.Generators;
 
-//#pragma warning disable RS1035 // "Do not use banned APIs for analyzers" But I want to.
-
 [Generator]
 public class BindingGenerator : IIncrementalGenerator
 {
-    public void Initialize(IncrementalGeneratorInitializationContext context)
-    {
-        // Find all fields with [Binding] attribute
-        var bindingFields = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                predicate: static (s, _) => IsBindingField(s),
-                transform: static (ctx, _) => GetBindingField(ctx))
-            .Where(static m => m is not null);
-
-        context.RegisterSourceOutput(bindingFields,
-            static (spc, field) => Execute(field!, spc));
-    }
-
     private static bool IsBindingField(SyntaxNode node) =>
         node is FieldDeclarationSyntax field &&
         field.AttributeLists.Any(al => al.Attributes
             .Any(a => a.Name.ToString() == "Binding"))
-        || 
+        ||
         node is PropertyDeclarationSyntax prop &&
         prop.AttributeLists.Any(al => al.Attributes
             .Any(a => a.Name.ToString() == "Binding"))
@@ -48,104 +32,179 @@ public class BindingGenerator : IIncrementalGenerator
         var fieldSymbol = model.GetDeclaredSymbol(fieldDeclaration.Declaration.Variables[0]);
         if (fieldSymbol == null) return null;
 
-        //var bindingAttribute = fieldSymbol.GetAttributes().FirstOrDefault(attr => attr.AttributeClass?.Name == "BindingAttribute");
-        //File.WriteAllText($"C:/Users/jhset/Desktop/piss.cs", $"{string.Join("\n", fieldSymbol.GetAttributes().FirstOrDefault().AttributeClass.Name)}");
-        //var typeArg = bindingAttribute.ConstructorArguments[0].Value;
-        //File.WriteAllText($"C:/Users/jhset/Desktop/ass.cs", $"{typeArg}");
+        var containingType = fieldSymbol.ContainingType;
         var root = fieldDeclaration.SyntaxTree.GetCompilationUnitRoot();
         var usings = root.Usings
            .Select(u => u.ToFullString())
            .ToList();
 
-        // Extract field information
-        var containingType = fieldSymbol.ContainingType;
-        var fieldName = fieldDeclaration.Declaration.Variables[0].Identifier.Text;
-
-
         var fi = new FieldInfo(
             containingType.ContainingNamespace.ToDisplayString(),
             containingType.Name,
-            fieldName,
+            fieldDeclaration.Declaration.Variables[0].Identifier.Text,
             fieldDeclaration.Declaration.Type.ToString(),
             fieldDeclaration.Modifiers.ToString(),
-            usings);
+            usings,
+            containingType,
+            IsDerivedFromUIElement(containingType));
 
         return fi;
     }
 
-    private static void Execute(FieldInfo field, SourceProductionContext context)
+    private static bool HasMethodWithName(INamedTypeSymbol containingType, string methodName)
     {
-        // Generate backing field and property
-        string propName = field.PropertyName;
-        if (propName.StartsWith("_"))
+        // Look for a method in the members of the type with the specified name
+
+        return containingType.GetMembers().OfType<IMethodSymbol>()
+            .Any(m => m.Name == methodName);
+    }
+
+    private static bool IsDerivedFromUIElement(INamedTypeSymbol containingType)
+    {
+        var baseType = containingType.BaseType;
+        //File.WriteAllText($"C:/Users/jhset/Desktop/{containingType.Name}.txt", $"{baseType.ToDisplayString()}:");
+        while (baseType != null)
         {
-            propName = propName.Substring(1);
+            if (baseType.ToDisplayString() == "MelonUI.Base.UIElement")
+            {
+                return true;
+            }
+            baseType = baseType.BaseType;
         }
-        string propPublic = $"{propName[0].ToString().ToUpper()}{propName.Substring(1)}";
-        var usingsText = string.Join("\n", field.Usings);
-        string source = "";
-        if(field.PropertyType == "string")
+        return false;
+    }
+
+    public void Initialize(IncrementalGeneratorInitializationContext context)
+    {
+        var bindingFields = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (s, _) => IsBindingField(s),
+                transform: static (ctx, _) => GetBindingField(ctx))
+            .Where(static m => m is not null);
+
+        // Group by containing class
+        var groupedFields = bindingFields
+            .Collect() // Collect all fields in a single context
+            .Select(static (fields, _) =>
+                fields
+                    .GroupBy(f => f!.ContainingType, f => f!)
+                    .ToImmutableArray());
+
+        context.RegisterSourceOutput(groupedFields,
+            static (spc, grouped) =>
+            {
+                foreach (var group in grouped)
+                {
+                    ExecuteClass(group.Key, group.ToImmutableArray(), spc);
+                }
+            });
+    }
+
+    private static void ExecuteClass(INamedTypeSymbol containingType, ImmutableArray<FieldInfo> fields, SourceProductionContext context)
+    {
+        var className = containingType.Name;
+        var namespaceName = containingType.ContainingNamespace.ToDisplayString();
+        var usingsText = string.Join("\n", fields.First().Usings);
+
+        bool hasGetFunction = HasMethodWithName(containingType, "GetBoundValue");
+        bool hasSetFunction = HasMethodWithName(containingType, "SetBoundValue");
+
+        string boundFunctions = string.Empty;
+        if (!hasGetFunction && !fields.First().DerivesFromUIElement)
         {
-            source = $@"
-// Piss
-{usingsText}
-
-namespace {field.Namespace}
+            boundFunctions += $@"
+/// <summary>
+/// Gets the bound value or the local value.
+/// </summary>
+protected object GetBoundValue(string propertyName, object localValue)
 {{
-
-    partial class {field.ClassName}
+    try
     {{
-        // Auto-property
-        public {field.PropertyType} {propPublic}
+        if (_bindings.TryGetValue(propertyName, out var binding))
         {{
-            get
-            {{
-                var val = GetBoundValue(nameof({propPublic}), $""{{{field.PropertyName}}}"");
-                string stred = $""{{val}}"";
-                return stred;
-            }}
-            set => SetBoundValue(nameof({propPublic}), value, ref {field.PropertyName});
+            if (binding.IsProperty)
+                return binding.GetValue();
         }}
+        return localValue;
+    }}
+    catch (Exception)
+    {{
+        return localValue;
     }}
 }}";
         }
-        else
-        {
-            source = $@"
-// Piss
-{usingsText}
 
-namespace {field.Namespace}
+        if (!hasSetFunction && !fields.First().DerivesFromUIElement)
+        {
+            boundFunctions += $@"
+/// <summary>
+/// Sets the bound value or the local value.
+/// </summary>
+protected void SetBoundValue<T>(string propertyName, T value, ref T localStorage)
 {{
-    partial class {field.ClassName}
+    if (_bindings.TryGetValue(propertyName, out var binding))
     {{
-        // Auto-property
+        if (binding.IsProperty)
+        {{
+            binding.SetValue(value);
+            return;
+        }}
+        // Event bindings are handled separately
+    }}
+
+    // Not bound, set locally
+    localStorage = value;
+}}";
+        }
+
+        var dic = boundFunctions.Length != 0 ? "protected Dictionary<string, Binding> _bindings = new Dictionary<string, Binding>();" : " ";
+        var properties = fields.Select(field =>
+        {
+            string propName = field.PropertyName.StartsWith("_")
+                ? field.PropertyName.Substring(1)
+                : field.PropertyName;
+            string propPublic = $"{char.ToUpper(propName[0])}{propName.Substring(1)}";
+
+            return $@"
         public {field.PropertyType} {propPublic}
         {{
             get => ({field.PropertyType})GetBoundValue(nameof({propPublic}), {field.PropertyName});
             set => SetBoundValue(nameof({propPublic}), value, ref {field.PropertyName});
-        }}
+        }}";
+        });
+
+        string source = $@"
+// Auto-generated code
+{usingsText}
+
+namespace {namespaceName}
+{{
+    partial class {className}
+    {{
+        {dic}
+        {boundFunctions}
+
+        {string.Join("\n", properties)}
     }}
 }}";
-        }
-        
 
-        context.AddSource(
-            $"{field.ClassName}.{field.PropertyName}.g.cs",
-            source);
-        //File.WriteAllText($"C:/Users/jhset/Desktop/GeneratorTesting/{field.ClassName}.{field.PropertyName}.g.cs", source);
+        context.AddSource($"{className}.g.cs", source);
     }
+
 }
 
-
-internal class FieldInfo {
+internal class FieldInfo
+{
     public string Namespace;
     public string ClassName;
     public string PropertyName;
     public string PropertyType;
     public string Modifiers;
     public List<string> Usings;
-    public FieldInfo(string ns, string cn, string pn, string pt, string md, List<string> u)
+    public INamedTypeSymbol ContainingType;
+    public bool DerivesFromUIElement;
+
+    public FieldInfo(string ns, string cn, string pn, string pt, string md, List<string> u, INamedTypeSymbol container, bool derives)
     {
         Namespace = ns;
         ClassName = cn;
@@ -153,6 +212,9 @@ internal class FieldInfo {
         PropertyType = pt;
         Modifiers = md;
         Usings = u;
+        ContainingType = container;
+        DerivesFromUIElement = derives;
     }
+
     public override string ToString() => $"{Namespace}.{ClassName}.{PropertyName} : {PropertyType}";
 }
