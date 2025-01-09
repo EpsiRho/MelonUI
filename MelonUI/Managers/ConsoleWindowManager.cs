@@ -28,6 +28,9 @@ namespace MelonUI.Managers
         public bool EnableSystemFocusControls = true;
         public bool EnableGlobalControls = true;
         public bool EnableTitleBar = false;
+        public bool IsManaged { get { return IsRendererActive && IsControllerActive; } }
+        public bool IsRendererActive;
+        public bool IsControllerActive;
         public int HighestZ = 0;
         public Color TitleForeground { get; set; } = Color.White;
         public Color TitleBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
@@ -44,6 +47,104 @@ namespace MelonUI.Managers
               Console.OpenStandardOutput(),
               bufferSize: bufferSize);
             UpdateBufferSize();
+        }
+
+        public string Screenshot(bool KeepColor)
+        {
+            try
+            {
+                if (MainBuffer.Width != Console.WindowWidth || MainBuffer.Height != Console.WindowHeight)
+                {
+                    Parallel.ForEach(RootElements, (element) =>
+                    {
+                        element.NeedsRecalculation = true;
+                    });
+                }
+                UpdateBufferSize();
+                MainBuffer.Clear(Color.FromArgb(0, 0, 0, 0));
+
+                // Draw title and status
+                int bumpY = 0;
+                if (EnableTitleBar)
+                {
+                    bumpY = 2;
+                    for (int i = 0; i < Title.Length && i < MainBuffer.Width; i++)
+                        MainBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
+                    for (int i = 0; i < Status.Length && i < MainBuffer.Width; i++)
+                        MainBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
+                }
+
+                // Calculate layouts and render elements
+                var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();
+                var delElms = RootElements.Where(e => e.RenderThreadDeleteMe);
+                foreach (var item in delElms)
+                {
+                    RemoveElement(item);
+                }
+                var visibleElms = RootElements.Where(x => x.IsVisible).ToList();
+                Parallel.ForEach(visibleElms, (element) =>
+                {
+                    ConsoleBuffer elementBuffer = null;
+
+                    if (element.NeedsRecalculation)
+                    {
+                        element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
+                        elementBuffer = element.Render();
+
+                        if (element.EnableCaching)
+                        {
+                            lock (BufferCache)
+                            {
+                                BufferCache[element] = elementBuffer;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        bool bufferFound = false;
+                        if (element.EnableCaching)
+                        {
+                            lock (BufferCache)
+                            {
+                                if (BufferCache.TryGetValue(element, out elementBuffer))
+                                {
+                                    bufferFound = true;
+                                }
+                            }
+                        }
+
+                        if (!bufferFound)
+                        {
+                            element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
+                            elementBuffer = element.Render();
+
+                            if (element.EnableCaching)
+                            {
+                                lock (BufferCache)
+                                {
+                                    BufferCache[element] = elementBuffer;
+                                }
+                            }
+                        }
+                    }
+
+                    objectBuffers.Add((elementBuffer, element));
+                });
+
+                var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
+                foreach (var element in lst)
+                {
+                    MainBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
+                };
+
+                // Screenshot ;P
+                var screenshot = MainBuffer.Screenshot(KeepColor);
+                return screenshot;
+            }
+            catch (Exception e)
+            {
+                return e.Message;
+            }
         }
 
         private UIElement FindNearestElement(UIElement current, Direction direction)
@@ -364,7 +465,8 @@ namespace MelonUI.Managers
                     RemoveElement(item);
                 }
                 var visibleElms = RootElements.Where(x => x.IsVisible).ToList();
-                Parallel.ForEach(visibleElms, (element) =>
+                //Parallel.ForEach(visibleElms, (element) => (Parallel ForEach was causing Memory Access Violation Exceptions, and perf gain was minimal so.)
+                foreach (var element in visibleElms)
                 {
                     ConsoleBuffer elementBuffer = null;
 
@@ -411,7 +513,7 @@ namespace MelonUI.Managers
                     }
 
                     objectBuffers.Add((elementBuffer, element));
-                });
+                };
 
                 var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
                 foreach (var element in lst)
@@ -573,6 +675,7 @@ namespace MelonUI.Managers
         {
             Thread ControllerThread = new Thread(() =>
             {
+                IsControllerActive = true;
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     try
@@ -588,9 +691,11 @@ namespace MelonUI.Managers
                         FrameRendered?.Invoke(this, EventArgs.Empty);
                     }
                 }
+                IsControllerActive = false;
             });
             Thread DisplayThread = new Thread(() =>
             {
+                IsRendererActive = true;
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     try
@@ -606,6 +711,7 @@ namespace MelonUI.Managers
                         FrameRendered?.Invoke(this, EventArgs.Empty);
                     }
                 }
+                IsRendererActive = false;
             });
             try
             {

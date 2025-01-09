@@ -19,7 +19,7 @@ namespace MelonUI.Default
         public int CursorPosition { get; private set; } = 0;
         [Binding]
         public char hiddenCharacter = '*';
-        private object _HideCharacters;
+        private object _HideCharacters = false;
         public bool HideCharacters
         {
             get
@@ -58,6 +58,17 @@ namespace MelonUI.Default
             RegisterKeyboardControl(
                 ConsoleKey.LeftArrow,
                 () => { if (CursorPosition > 0) CursorPosition--; },
+                "Move cursor left"
+            );
+
+            RegisterKeyboardControl(
+                ConsoleKey.Home,
+                () => { CursorPosition = 0; },
+                "Move cursor left"
+            );
+            RegisterKeyboardControl(
+                ConsoleKey.End,
+                () => { CursorPosition = Text.Length; },
                 "Move cursor left"
             );
 

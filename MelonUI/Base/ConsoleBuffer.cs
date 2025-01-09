@@ -342,5 +342,67 @@ namespace MelonUI.Base
             }
         }
 
+        public string Screenshot(bool KeepColor)
+        {
+            if (Width <= 0 || Height <= 0) return "";
+
+            try
+            {
+                StringBuilder screenBuilder = new StringBuilder();
+
+                for (int y = 0; y < Height - 1; y++)
+                {
+                    StringBuilder lineBuilder = new StringBuilder();
+                    bool skipNext = false;
+
+                    for (int x = 0; x < Width; x++)
+                    {
+                        if (skipNext)
+                        {
+                            skipNext = false;
+                            continue;
+                        }
+
+                        var pixel = Buffer[y, x];
+                        char ch = pixel.Character;
+
+                        string charStr = ch.ToString();
+
+                        if (pixel.Foreground.A == 0 && pixel.Background.A == 0)
+                        {
+                            lineBuilder.Append(charStr);
+                        }
+                        else if (KeepColor)
+                        {
+                            string coloredChar = charStr;
+                            if (pixel.Foreground.A != 0)
+                                coloredChar = coloredChar.Pastel(pixel.Foreground);
+
+                            if (pixel.Background.A != 0)
+                                coloredChar = coloredChar.PastelBg(pixel.Background);
+
+                            lineBuilder.Append(coloredChar);
+                        }
+                        else
+                        {
+                            lineBuilder.Append(charStr);
+                        }
+
+                        if (pixel.IsWide)
+                        {
+                            skipNext = true;
+                        }
+                    }
+
+                    screenBuilder.AppendLine(lineBuilder.ToString());
+                }
+
+                return screenBuilder.ToString();
+            }
+            catch (Exception)
+            {
+                return "";
+            }
+        }
     }
 }

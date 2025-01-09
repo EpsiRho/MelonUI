@@ -2,8 +2,8 @@
 		 Height="90%"
 		 Name="DemoPage"
 		 Assemblies="MelonUI,MelonUIDemo"
-		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing"
-		 Backends="TestPageBackend">
+		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing,MelonUIDemo.Backends"
+		 Backends="DemoWelcomeBackend,TestPageBackend">
 	<TextBlock Text="{TestPageBackend.TestText}"
 		   X="0"
 		   Y="0"
@@ -18,6 +18,11 @@
 		</TextBlock.KeyboardControls>
   
 	</TextBlock>
+
+	<FPSCounter XYAlignment="TopRight"
+		    Width="5"
+		    Height="4"
+		    OnFrameRendered="{DemoWelcomeBackend.CWM.FrameRendered}"/>
 
 	<TextBlock Text="Yippee It works! [Color(0,255,0)]Pickle [ColorReset]Candy"
 		   X="0"

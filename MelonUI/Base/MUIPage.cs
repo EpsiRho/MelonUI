@@ -695,13 +695,13 @@ namespace MelonUI.Base
                 }
 
                 // Not found
-                CompilerMessages.Add(new CompilerMessage($"Poperty \"{memberName}\" not found on type \"{currentType.Name}\".", MessageSeverity.Error, lineNumber));
+                CompilerMessages.Add(new CompilerMessage($"Poperty \"{memberName}\" not found on type \"{currentType.Name}\". (Are you using fields or properties?)", MessageSeverity.Error, lineNumber));
                 Failed = true;
                 CompilerFocusedMessage = CompilerMessages.Last();
                 return null;
             }
 
-            CompilerMessages.Add(new CompilerMessage($"Couldn't find the property to bind to!", MessageSeverity.Error, lineNumber));
+            CompilerMessages.Add(new CompilerMessage($"Couldn't find the property to bind to! (Are you using fields or properties?)", MessageSeverity.Error, lineNumber));
             Failed = true;
             CompilerFocusedMessage = CompilerMessages.Last();
             return null;
@@ -1300,6 +1300,13 @@ namespace MelonUI.Base
                 try
                 {
                     var binding = CreateBinding(bindingRef, element);
+                    if(binding == null)
+                    {
+                        Failed = true;
+                        CompilerMessages.Add(new CompilerMessage($"Failed to bind \"{bindingRef}\" to method \"{propertyName}\"", MessageSeverity.Error, lineNumber));
+                        CompilerFocusedMessage = CompilerMessages.Last();
+                        return;
+                    }
                     if (binding.IsEvent)
                     {
                         Delegate handlerDelegate = Delegate.CreateDelegate(binding.EventInfo.EventHandlerType, element, method);
@@ -1598,21 +1605,28 @@ namespace MelonUI.Base
         private bool TryMethodParse(string strValue, MethodInfo parseMethod, out object parsedVal)
         {
             parsedVal = null;
+            try
+            {
 
-            if (parseMethod.Name == "Parse")
-            {
-                parsedVal = parseMethod.Invoke(null, new object[] { strValue });
-                return true;
-            }
-            else if (parseMethod.Name == "TryParse")
-            {
-                var parameters = new object[] { strValue, null };
-                bool success = (bool)parseMethod.Invoke(null, parameters);
-                if (success)
+                if (parseMethod.Name == "Parse")
                 {
-                    parsedVal = parameters[1];
+                    parsedVal = parseMethod.Invoke(null, new object[] { strValue });
                     return true;
                 }
+                else if (parseMethod.Name == "TryParse")
+                {
+                    var parameters = new object[] { strValue, null };
+                    bool success = (bool)parseMethod.Invoke(null, parameters);
+                    if (success)
+                    {
+                        parsedVal = parameters[1];
+                        return true;
+                    }
+                }
+            }
+            catch(Exception e)
+            {
+                return false;
             }
             return false;
         }

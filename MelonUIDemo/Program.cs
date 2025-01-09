@@ -65,8 +65,7 @@ else
 
 }
 
-CancellationTokenSource CancelSource = new CancellationTokenSource();
-DemoWelcomeBackend.CWM.ManageConsole(CancelSource.Token);
+DemoWelcomeBackend.CWM.ManageConsole(DemoWelcomeBackend.CancelSource.Token);
 
 bool XLeft = false;
 bool XRight = true;
@@ -80,31 +79,23 @@ int CurX2 = 10;
 int CurY2 = 10;
 
 float step = 0.0f;
-                             // Red                          Orange                            Yellow                            Green                           Light Blue                        Blue                            Purple                            Red
-Color[] Line1Gradient = new[] { Color.FromArgb(255,255,0,0), Color.FromArgb(255, 255, 160, 0), Color.FromArgb(255, 255, 255, 0), Color.FromArgb(255, 0, 255, 0), Color.FromArgb(255, 0, 190, 255), Color.FromArgb(255, 0, 0, 255), Color.FromArgb(255, 255, 160, 0), Color.FromArgb(255, 255, 0, 0) };
+                             // Red                          Orange                            Yellow                            Green                           Light Blue                        Blue                            Purple                            Pink                              Red
+Color[] Line1Gradient = new[] { Color.FromArgb(255,255,0,0), Color.FromArgb(255, 255, 160, 0), Color.FromArgb(255, 255, 255, 0), Color.FromArgb(255, 0, 255, 0), Color.FromArgb(255, 0, 190, 255), Color.FromArgb(255, 0, 0, 255), Color.FromArgb(255, 137, 0, 255), Color.FromArgb(255, 255, 0, 205), Color.FromArgb(255, 255, 0, 0) };
                              // Cyan                         Pink                                Cyan
 Color[] Line2Gradient = new[] { Color.FromArgb(255,0,255,255), Color.FromArgb(255, 255, 0, 200), Color.FromArgb(255, 0, 255, 255) };
 
-DemoWelcomeBackend.CWM.RegisterKeyboardControl(ConsoleKey.LeftArrow, () =>
+DemoWelcomeBackend.CWM.RegisterKeyboardControl(ConsoleKey.F12, () =>
 {
-    TestPageBackend.LineColor = ParamParser.GetGradientColor(Line2Gradient, step);
-    TestPageBackend.AntiLineColor = ParamParser.GetGradientColor(Line2Gradient, 1.0f - step);
-    step -= 0.005f;
-    if (step <= 0.0f)
+    var str = DemoWelcomeBackend.CWM.Screenshot(false);
+    string dir = $"{DateTime.Now}.txt";
+    var chs = Path.GetInvalidFileNameChars();
+    foreach (var item in chs)
     {
-        step += 1.0f;
+        dir = dir.Replace(item, '-');
     }
-}, "Gradient Animation Step--");
-DemoWelcomeBackend.CWM.RegisterKeyboardControl(ConsoleKey.RightArrow, () =>
-{
-    TestPageBackend.LineColor = ParamParser.GetGradientColor(Line2Gradient, step);
-    TestPageBackend.AntiLineColor = ParamParser.GetGradientColor(Line2Gradient, 1.0f - step);
-    step += 0.005f;
-    if (step >= 1.0f)
-    {
-        step = 0.0f;
-    }
-}, "Gradient Animation Step++");
+    Directory.CreateDirectory("Screenshots");
+    File.WriteAllText($"Screenshots\\{dir}", str);
+}, "Screenshot");
 
 while (true) 
 {
@@ -112,7 +103,10 @@ while (true)
     TestPageBackend.CurY1 = $"{CurY1}%";
     TestPageBackend.CurX2 = $"{CurX2}%";
     TestPageBackend.CurY2 = $"{CurY2}%";
-    if(step >= 1.0f)
+    TestPageBackend.LineColor = ParamParser.GetGradientColor(Line1Gradient, step);
+    TestPageBackend.AntiLineColor = ParamParser.GetGradientColor(Line2Gradient, 1.0f - step);
+    step += 0.005f;
+    if (step >= 1.0f)
     {
         step = 0.0f;
     }

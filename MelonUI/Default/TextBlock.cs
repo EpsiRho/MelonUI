@@ -273,7 +273,11 @@ namespace MelonUI.Default
                 else if (paragraph[i] == ' ')
                 {
                     // We found a visible space => finish the current word
-                    if (sb.Length > 0)
+                    if(paragraph[i + 1] == ' ')
+                    {
+                        sb.Append(paragraph[i]);
+                    }
+                    else if (sb.Length > 0)
                     {
                         result.Add(sb.ToString());
                         sb.Clear();

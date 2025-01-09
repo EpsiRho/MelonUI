@@ -11,11 +11,12 @@ using System.Threading.Tasks;
 
 namespace MelonUIDemo.Backends
 {
-    public class DemoWelcomeBackend
+    public static class DemoWelcomeBackend
     {
-        // Properties cannot be found with {get;set;} methods defined.
-        public static ConsoleWindowManager CWM;
-        public string WelcomeText { get; set; }
+        // Properties cannot be found without {get;set;} methods defined.
+        public static ConsoleWindowManager CWM { get; set; }
+        public static CancellationTokenSource CancelSource = new CancellationTokenSource();
+        public static string WelcomeText { get; set; }
             = "[Color(72, 168, 241)]MelonUI V1.0b MXML Demo (1216122424)\n" +
               "[Color(255, 255, 255)]Any file you enter will be watched for changes, and update the MUIPage on file save.\n" +
               "[Color(199, 59, 59)]Support is limited, as are compiler messages. [Color(255, 255, 255)]If you're having trouble, contact Epsi :3";
@@ -38,7 +39,7 @@ namespace MelonUIDemo.Backends
             CWM.MoveFocus(tbelm);
         };
 
-        public Action<string, TextBox> FilePathInput { get; set; } = (string str, TextBox e) =>
+        public static Action<string, TextBox> FilePathInput { get; set; } = (string str, TextBox e) =>
         {
             str = str.Replace("\\", "/").Replace("\"", "");
             if(File.Exists(str))
@@ -102,14 +103,6 @@ namespace MelonUIDemo.Backends
 
         public static void CompilePageChanges()
         {
-            TextBlock tb = new TextBlock()
-            {
-                Text = "",
-                X = "25%",
-                Y = "25%",
-                Width = "50%",
-                Height = "50%",
-            };
             CWM.SetStatus("Changes Found");
             try
             {
@@ -142,20 +135,23 @@ namespace MelonUIDemo.Backends
                 if (!chk)
                 {
                     CWM.SetStatus($"Page compilation failed");
-                    ErrorInfo = "";
-                    foreach (var line in WatchedPage.CompilerMessages)
-                    {
-                        ErrorInfo += $"{line}\n";
-                    }
-                    CWM.RemoveElement(WatchedPage);
-                    tb.Text = ErrorInfo;
-                    CWM.AddElement(tb);
+                    CancelSource.Cancel();
+                    string sc = WatchedPage.GetSimpleCompilerDisplay();
+                    while (CWM.IsManaged) { Thread.Sleep(20); }
+                    Thread.Sleep(200);
+                    Console.Clear();
+                    Console.SetCursorPosition(0, 0);
+                    Console.WriteLine(sc);
                     return;
                 }
                 CWM.AddElement(WatchedPage);
-                CWM.RemoveElement(tb);
                 CWM.SetStatus($"Page compiled!");
                 CWM.MoveFocus(WatchedPage.Children.FirstOrDefault(x => x.ConsiderForFocus && x.IsVisible));
+                if(CancelSource.IsCancellationRequested)
+                {
+                    CancelSource = new CancellationTokenSource();
+                    DemoWelcomeBackend.CWM.ManageConsole(DemoWelcomeBackend.CancelSource.Token);
+                }
             }
             catch (Exception ex) { }
         }

@@ -77,7 +77,7 @@
 		 ## New UIElements
 		 (COMPLETE) Line
 		 - Breadcrumb Bar
-		 - RGB Color Picker
+		 (COMPLETE) RGB Color Picker
 		 
 		 ## Library Accessories
 		 - VS Extension (?)
@@ -97,11 +97,25 @@
 		   (COMPLETE) Ansi color string -> Colored ConsoleBuffer
 		   (COMPLETE) Support for Ansi color strings in TextBlock.Text
 		   - Support for Ansi color strings in other UIElements(?)
-		 - UI Snapshot
+		 (COMPLETE) UI Snapshot
 		 (COMPLETE) CWM disable title + status bar
 		 (COMPLETE) CWM Add custom global controls
 		 - Unit Testing
 		 - Run over original UIElements and finish impl
+		   - Button
+		   - Button Panel
+		   - FilePicker
+		   - FPSCounter
+		   - GridContainer
+		   - Line
+		   - MusicPlayer
+		   - OptionsMenu
+		   - ProgressBar
+		   - QueueContainer
+		   (Complete) TextBlock
+		   - TextBox
+		   - Waveform
+		   - Worklog
 		 - Documentation
 		 (COMPLETE) Make UIElement Background transparency work correctly everywhere pls
 		 
@@ -140,6 +154,7 @@
 	<TextBlock Text="{DemoWelcomeBackend.ErrorInfo}"
 			   IsVisible="false"
 			   XYAlignment="Centered"
+			   TextAlignment="Centered"
 			   Width="25%"
 			   Height="25%"
 			   Name="ErrorInfo">
