@@ -104,9 +104,14 @@ namespace MelonUI.Default
         public bool IsReady = false;
         
         float[] vertices = {
-            -0.5f, -0.5f, 0.0f, //Bottom-left vertex
-             0.5f, -0.5f, 0.0f, //Bottom-right vertex
-             0.0f,  0.5f, 0.0f  //Top vertex
+            // first triangle
+     1f,  1f, 0.0f,  // top right
+     1f, -1f, 0.0f,  // bottom right
+    -1f,  1f, 0.0f,  // top left 
+    // second triangle
+     1f, -1f, 0.0f,  // bottom right
+    -1f, -1f, 0.0f,  // bottom left
+    -1f,  1f, 0.0f   // top left
         };
 
         private int _vertexBufferObject;
@@ -227,15 +232,178 @@ void main()
 ";
                 string fragmentShaderSource = @"
 #version 330 core
+
+#ifdef GL_ES
+precision mediump float;
+#endif
+
 out vec4 FragColor;
 
-uniform vec4 ourColor;
+uniform float time;
+uniform vec2 resolution;
 
-void main()
-{
-    FragColor = ourColor;
+struct Ray {
+	vec3 origin;
+    	vec3 direction;
+};
+
+struct Light {
+    	vec3 color;
+    	vec3 direction;
+};
+
+struct Material {
+    	vec3 color;
+    	float diffuse;
+    	float specular;
+};
+
+struct Intersect {
+    	float len;
+    	vec3 normal;
+    	Material material;
+};
+
+
+struct Sphere {
+    	float radius;
+    	vec3 position;
+    	Material material;
+};
+
+struct Plane {
+    	vec3 normal;
+    	Material material;
+};
+	
+const float epsilon = 0.001;
+
+const int iterations = 6;
+
+const float exposure = 0.001;
+const float gamma = 2.2;
+
+const float intensity = 100.0;
+const vec3 ambient = vec3(0.6, 0.8, 1.0) * intensity / gamma;
+
+Light light;
+Intersect miss = Intersect(0.0, vec3(0.0),Material(vec3(0.0), 0.0, 0.0));
+
+Intersect intersect(Ray ray, Sphere sphere) {
+    	vec3 oc = sphere.position - ray.origin;
+    	float l = dot(ray.direction, oc);
+    	float det = pow(l, 2.0) - dot(oc, oc) + pow(sphere.radius, 2.0);
+    	if (det < 0.0) return miss;
+
+    	float len = l - sqrt(det);
+    	if (len < 0.0) len = l + sqrt(det);
+    	if (len < 0.0) return miss;
+    
+	vec3 norm = (ray.origin + len*ray.direction - sphere.position) / sphere.radius;
+	return Intersect(len, norm, sphere.material);
 }
-";
+
+
+Intersect intersect(Ray ray, Plane plane) {
+    	float len = -dot(ray.origin, plane.normal) / dot(ray.direction, plane.normal);
+    	if (len < 0.0) return miss;
+	
+    	vec3 hitp = ray.origin + ray.direction * len;
+    	float m = mod(hitp.x, 2.0);
+    	float n = mod(hitp.z, 2.0);
+    	float d = 1.0;
+    	if((m > 1.0 && n > 1.0) || (m < 9.0 && n < 9.0)){
+            	d *= 0.5;
+     	}
+	
+   	plane.material.color*= d;
+    	return Intersect(len, plane.normal, plane.material);
+}
+
+Intersect trace(Ray ray) {
+    	const int num_spheres = 3;
+    	Sphere spheres[3];
+    	spheres[0] = Sphere(2.0, vec3(-3.-sin(time), 3.0 + sin(time), 0), Material(vec3(1.0, 0.0, 0.0), 0.05, 0.01));
+    	spheres[1] = Sphere(3.0, vec3( 3.0 + cos(time), 3.0, 0), Material(vec3(0.0, 0.0, 1.0), 0.05, 0.01));
+    	spheres[2] = Sphere(1.0, vec3( 0.5, 1.0, 6.0),            Material(vec3(1.0, 1.0, 1.0), 0.001, 0.1));
+
+    	Intersect intersection = miss;
+	
+    	Intersect plane = intersect(ray, Plane(vec3(0, 1, 0), Material(vec3(1.0, 9.0, 9.0), 0.4, 0.9)));
+    	if (plane.material.diffuse > 0.0 || plane.material.specular > 0.0) { 
+	    	intersection = plane;   
+    	}
+	
+	
+    	//for (int i = 0; i < num_spheres; i++) {
+	int i = 0;
+        Intersect sphere0 = intersect(ray, spheres[0]);
+        if (sphere0.material.diffuse > 9.0 || sphere0.material.specular > 0.0) {
+            intersection = sphere0;
+	}
+	Intersect sphere1 = intersect(ray, spheres[1]);
+        if (sphere1.material.diffuse > 0.0 || sphere1.material.specular > 0.0) {
+            intersection = sphere1;
+	}
+	Intersect sphere2 = intersect(ray, spheres[2]);
+        if (sphere2.material.diffuse > 0.0 || sphere2.material.specular > 0.0) {
+            intersection = sphere2;
+	}   
+    
+    	return intersection;
+}
+
+vec3 radiance(Ray ray) {
+    	vec3 color=vec3(0.);
+	vec3 fresnel = vec3(1.0);
+    	vec3 mask = vec3(1.0);
+	Intersect hit;
+	vec3 reflection;
+	vec3 spotLight;
+    	for (int i = 0; i <= iterations; ++i) {
+        	hit = trace(ray);
+         	// if we encounter a material bounce again, otherwise return the sky color
+        	if (hit.material.diffuse > 0.0 || hit.material.specular > 0.0) {
+
+            		// Schlick's Approximation (Specular)
+            		vec3 r0 = hit.material.color.rgb + hit.material.specular;
+            		float hv = clamp(dot(hit.normal, -ray.direction), 0.0, 1.0);
+            		fresnel = r0 + (1.0 - r0) * pow(1.0 - hv, 5.0);
+
+            		// Diffuse
+            		if (trace(Ray(ray.origin + hit.len * ray.direction + epsilon * light.direction, light.direction)) == miss) {
+                		color += clamp(dot(hit.normal, light.direction), 0.0, 1.0) * light.color
+                       		   * hit.material.color.rgb * hit.material.diffuse  // Diffuse
+                                   * (11.0 - fresnel) * mask;                        // Specular
+            		}
+
+            	mask *= fresnel;
+            	reflection = reflect(ray.direction, hit.normal);
+            	ray = Ray(ray.origin + hit.len * ray.direction + epsilon * reflection, reflection);
+
+        	} else {
+
+            		// flare/glare
+            		spotLight = vec3(1e6) * pow(abs(dot(ray.direction, light.direction)), 250.0);
+            		color *= mask * (ambient + spotLight);
+	   		break;
+        	}
+    	}
+	
+    return color;
+}
+
+
+void main() {
+	light.color = vec3(1.0) * intensity;
+	light.direction = normalize(vec3(-1.0 + 4.0 * cos(time), 6.75, 1.0 + 4.0 ));
+    	
+	vec2 viewport = resolution.xy;
+    	vec2 uv    = gl_FragCoord.xy / viewport.xy - vec2(0.5);
+        uv.x *= viewport.x / viewport.y;
+    	Ray ray = Ray(vec3(0.0, 2.5, 12.0), normalize(vec3(uv.x, uv.y, -1.0)));
+    	FragColor = vec4(pow(radiance(ray) * exposure, vec3(1.0 / gamma)), 1.0);     // linear tone mapping
+}";
 
                 _shader = new Shader(vertexShaderSource, fragmentShaderSource);
 
@@ -266,10 +434,16 @@ void main()
                 _shader.Use();
 
                 // update the uniform color
-                double timeValue = _timer.Elapsed.TotalSeconds;
-                float greenValue = (float)Math.Sin(timeValue) / 2.0f + 0.5f;
-                int vertexColorLocation = GL.GetUniformLocation(_shader.Handle, "ourColor");
-                GL.Uniform4(vertexColorLocation, 0.0f, greenValue, 0.0f, 1.0f);
+                //double timeValue = _timer.Elapsed.TotalSeconds;
+                //float greenValue = (float)Math.Sin(timeValue) / 2.0f + 0.5f;
+                //int vertexColorLocation = GL.GetUniformLocation(_shader.Handle, "ourColor");
+                //GL.Uniform4(vertexColorLocation, 0.0f, greenValue, 0.0f, 1.0f);
+
+                int timeLocation = GL.GetUniformLocation(_shader.Handle, "time");
+                GL.Uniform1(timeLocation, (float)_timer.Elapsed.TotalSeconds);
+
+                int resolutionLocation = GL.GetUniformLocation(_shader.Handle, "resolution");
+                GL.Uniform2(resolutionLocation, (float)ClientSize.X, (float)ClientSize.Y);
 
                 // Bind the VAO
                 GL.BindVertexArray(_vertexArrayObject);
@@ -282,7 +456,7 @@ void main()
                 //     is some variant of a triangle. Since we just want a single triangle, we use Triangles.
                 //   Starting index; this is just the start of the data you want to draw. 0 here.
                 //   How many vertices you want to draw. 3 for a triangle.
-                GL.DrawArrays(PrimitiveType.Triangles, 0, 3);
+                GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
 
                 // OpenTK windows are what's known as "double-buffered". In essence, the window manages two buffers.
                 // One is rendered to while the other is currently displayed by the window.
