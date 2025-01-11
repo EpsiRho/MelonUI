@@ -185,6 +185,8 @@ namespace MelonUI.Base
                 return;
             };
             elm.Z = zCounter;
+            elm.Parent = this;
+            elm.ParentWindow = this.ParentWindow;
             Children.Add(elm);
         }
 
@@ -766,7 +768,18 @@ namespace MelonUI.Base
             }
 
             CompilerMessages.Add(new CompilerMessage($"Creating instance of {elementType.Name}.", MessageSeverity.Debug, lineNumber));
-            var uiElement = Activator.CreateInstance(elementType);
+            object uiElement = null;
+            try
+            {
+                uiElement = Activator.CreateInstance(elementType);
+            }
+            catch(Exception e)
+            {
+                Failed = true;
+                CompilerMessages.Add(new CompilerMessage($"Cannot create an instance of type \"{element.Name.LocalName}\": {e.Message}", MessageSeverity.Error, lineNumber));
+                CompilerFocusedMessage = CompilerMessages.Last();
+                return null;
+            }
 
             // 1) Set properties from attributes
             var flagsFromElement = GetFlagsFromElement(element);

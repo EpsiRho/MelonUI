@@ -163,7 +163,6 @@ namespace MelonUI.Base
         {
             var buffer = new ConsoleBuffer(ActualWidth, ActualHeight);
             var background = IsFocused ? FocusedBackground : Background;
-            buffer.Clear(background);
 
             if (!IsVisible || ActualWidth == 0 || ActualHeight == 0)
             {

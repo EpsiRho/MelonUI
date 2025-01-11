@@ -165,12 +165,29 @@ protected void SetBoundValue<T>(string propertyName, T value, ref T localStorage
                 : field.PropertyName;
             string propPublic = $"{char.ToUpper(propName[0])}{propName.Substring(1)}";
 
-            return $@"
-        public {field.PropertyType} {propPublic}
-        {{
-            get => ({field.PropertyType})GetBoundValue(nameof({propPublic}), {field.PropertyName});
-            set => SetBoundValue(nameof({propPublic}), value, ref {field.PropertyName});
-        }}";
+            if (field.PropertyType == "string")
+            {
+                return $@"
+public {field.PropertyType} {propPublic}
+{{
+    get
+    {{
+        var val = GetBoundValue(nameof({propPublic}), $""{{{field.PropertyName}}}"");
+        string stred = $""{{val}}"";
+        return stred;
+    }}
+    set => SetBoundValue(nameof({propPublic}), value, ref {field.PropertyName});
+}}";
+            }
+            else
+            {
+                return $@"
+public {field.PropertyType} {propPublic}
+{{
+    get => ({field.PropertyType})GetBoundValue(nameof({propPublic}), {field.PropertyName});
+    set => SetBoundValue(nameof({propPublic}), value, ref {field.PropertyName});
+}}";
+            }
         });
 
         string source = $@"

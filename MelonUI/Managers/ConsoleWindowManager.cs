@@ -19,6 +19,7 @@ namespace MelonUI.Managers
         public List<UIElement> RootElements = new();
         public UIElement FocusedElement;
         private ConsoleBuffer MainBuffer;
+        private ConsoleBuffer SCBuffer;
         public event EventHandler FrameRendered;
         private Dictionary<UIElement, ConsoleBuffer> BufferCache = new();
         private List<KeyboardControl> _KeyboardControls = new List<KeyboardControl>();
@@ -31,6 +32,7 @@ namespace MelonUI.Managers
         public bool IsManaged { get { return IsRendererActive && IsControllerActive; } }
         public bool IsRendererActive;
         public bool IsControllerActive;
+        public bool UsePlatformSpecificRenderer = true;
         public int HighestZ = 0;
         public Color TitleForeground { get; set; } = Color.White;
         public Color TitleBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
@@ -53,25 +55,34 @@ namespace MelonUI.Managers
         {
             try
             {
-                if (MainBuffer.Width != Console.WindowWidth || MainBuffer.Height != Console.WindowHeight)
+                if (SCBuffer.Width != Console.WindowWidth || SCBuffer.Height != Console.WindowHeight)
                 {
                     Parallel.ForEach(RootElements, (element) =>
                     {
                         element.NeedsRecalculation = true;
                     });
                 }
-                UpdateBufferSize();
-                MainBuffer.Clear(Color.FromArgb(0, 0, 0, 0));
+
+                int width = Math.Max(1, Console.WindowWidth);
+                int height = Math.Max(1, Console.WindowHeight);
+                if (SCBuffer == null)
+                {
+                    SCBuffer = new ConsoleBuffer(width, height);
+                }
+                else
+                {
+                    SCBuffer.Resize(width, height);
+                }
 
                 // Draw title and status
                 int bumpY = 0;
                 if (EnableTitleBar)
                 {
                     bumpY = 2;
-                    for (int i = 0; i < Title.Length && i < MainBuffer.Width; i++)
-                        MainBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
-                    for (int i = 0; i < Status.Length && i < MainBuffer.Width; i++)
-                        MainBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
+                    for (int i = 0; i < Title.Length && i < SCBuffer.Width; i++)
+                        SCBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
+                    for (int i = 0; i < Status.Length && i < SCBuffer.Width; i++)
+                        SCBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
                 }
 
                 // Calculate layouts and render elements
@@ -88,7 +99,7 @@ namespace MelonUI.Managers
 
                     if (element.NeedsRecalculation)
                     {
-                        element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
+                        element.CalculateLayout(0, bumpY, SCBuffer.Width, SCBuffer.Height - bumpY);
                         elementBuffer = element.Render();
 
                         if (element.EnableCaching)
@@ -115,7 +126,7 @@ namespace MelonUI.Managers
 
                         if (!bufferFound)
                         {
-                            element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
+                            element.CalculateLayout(0, bumpY, SCBuffer.Width, SCBuffer.Height - bumpY);
                             elementBuffer = element.Render();
 
                             if (element.EnableCaching)
@@ -134,11 +145,11 @@ namespace MelonUI.Managers
                 var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
                 foreach (var element in lst)
                 {
-                    MainBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
+                    SCBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
                 };
 
                 // Screenshot ;P
-                var screenshot = MainBuffer.Screenshot(KeepColor);
+                var screenshot = SCBuffer.Screenshot(KeepColor);
                 return screenshot;
             }
             catch (Exception e)
@@ -233,8 +244,9 @@ namespace MelonUI.Managers
         {
             try
             {
-                int width = Math.Max(1, Console.WindowWidth);
-                int height = Math.Max(1, Console.WindowHeight);
+                var sz = Win32Renderer.GetConsoleWindowSize();
+                int width = Math.Max(1, sz.width);
+                int height = Math.Max(1, sz.height);
 
                 if (MainBuffer == null)
                 {
@@ -277,6 +289,14 @@ namespace MelonUI.Managers
                     elm.NeedsRecalculation = true;
                 }
                 ResetSubChildrenRecalculation(elm.Children);
+            }
+        }
+        public void SetSubChildrenParentWindow(List<UIElement> elm)
+        {
+            foreach (var child in elm)
+            {
+                child.ParentWindow = this;
+                SetSubChildrenParentWindow(child.Children);
             }
         }
         public UIElement GetSubChildByGuid(string uid, List<UIElement> elms = null)
@@ -341,6 +361,7 @@ namespace MelonUI.Managers
         {
             forceFocus = EnableSystemFocusControls ? forceFocus : false;
             element.ParentWindow = this;
+            SetSubChildrenParentWindow(element.Children);
             if (FocusedElement == null)
             {
                 FocusedElement = element;
@@ -447,12 +468,22 @@ namespace MelonUI.Managers
         {
             try
             {
-                if (MainBuffer.Width != Console.WindowWidth || MainBuffer.Height != Console.WindowHeight)
+                if (Win32Renderer.IsSupported && UsePlatformSpecificRenderer)
                 {
-                    ResetSubChildrenRecalculation(RootElements);
+                    var sz = Win32Renderer.GetConsoleWindowSize();
+                    if (MainBuffer.Width != sz.width || MainBuffer.Height != sz.height)
+                    {
+                        ResetSubChildrenRecalculation(RootElements);
+                    }
+                }
+                else
+                {
+                    if (MainBuffer.Width != Console.WindowWidth || MainBuffer.Height != Console.WindowHeight)
+                    {
+                        ResetSubChildrenRecalculation(RootElements);
+                    }
                 }
                 UpdateBufferSize();
-                MainBuffer.Clear(Color.FromArgb(0,0,0,0));
 
                 // Draw title and status
                 int bumpY = 0;
@@ -531,14 +562,14 @@ namespace MelonUI.Managers
 
 
                 // Render the main buffer to console
-                MainBuffer.RenderToConsole(output);
+                MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
                 FrameRendered?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception e)
             {
                 Debug.WriteLine(e.Message);
                 MainBuffer.WriteStringWrapped(0,0,e.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
-                MainBuffer.RenderToConsole(output);
+                MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
                 FrameRendered?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -599,14 +630,9 @@ namespace MelonUI.Managers
 
         public void HandleInput()
         {
-            if (Console.KeyAvailable)
+            if (Console.KeyAvailable && EnableGlobalControls)
             {
                 var key = Console.ReadKey(true);
-
-                if (!EnableGlobalControls)
-                {
-                    return;
-                }
 
                 if (key.Modifiers == ConsoleModifiers.Alt)
                 {
@@ -695,9 +721,10 @@ namespace MelonUI.Managers
                         //TODO: Logging
                         Debug.WriteLine(ex.Message);
                         MainBuffer.WriteStringWrapped(0, 0, ex.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
-                        MainBuffer.RenderToConsole(output);
+                        MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
                         FrameRendered?.Invoke(this, EventArgs.Empty);
                     }
+                    Thread.Sleep(16);
                 }
                 IsControllerActive = false;
             });
@@ -715,7 +742,7 @@ namespace MelonUI.Managers
                         //TODO: Logging
                         Debug.WriteLine(ex.Message);
                         MainBuffer.WriteStringWrapped(0, 0, ex.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
-                        MainBuffer.RenderToConsole(output);
+                        MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
                         FrameRendered?.Invoke(this, EventArgs.Empty);
                     }
                 }

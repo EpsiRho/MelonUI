@@ -67,7 +67,7 @@ namespace MelonUI.Default
                 return string.Empty;
 
             // Replace [ColorReset] => ESC[0m
-            input = Regex.Replace(input, @"\[ColorReset\]", "\x1b[0m");
+            input = input.Replace(@"[ColorReset]", "\x1b[0m");
 
             // Parse each [Color(r,g,b)] block
             var colorRanges = ParseColors(input);

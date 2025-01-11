@@ -5,11 +5,23 @@
 		 ShowBorder="false"
 		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing,MelonUIDemo.Backends"
 		 Backends="TestPageBackend,DemoWelcomeBackend">
+
+
+	<MusicPlayerElement
+			   Width="30%"
+		   Y="50%"
+			   Height="20%"/>
+	<FPSCounter XYAlignment="TopRight"
+				Width="9"
+				Height="4"
+				OnFrameRendered="{DemoWelcomeBackend.CWM.FrameRendered}"/>
+	
 	<OptionsMenu Name="MUIDemoMenu"
 				 X="0"
 				 Y="0"
+				 IsVisible="false"
 				 Width="50%"
-				 Height="60%">
+				 Height="40%">
 		<OptionsMenu.Options>
 			<MenuItem Option="Open MXML Viewer"/>
 			<MenuItem Option="Show Line Demo">
@@ -19,13 +31,36 @@
 
 	</OptionsMenu>
 
+	<TextBlock Text="{DemoWelcomeBackend.RenderTypeDisplay}"
+			   XYAlignment="TopRight"
+			   TextAlignment="Centered"
+			   Width="15"
+			   Height="3"
+			   Y="5"/>
+
+	<TextBlock Text="{DemoWelcomeBackend.ConsoleSizeDisplay}"
+			   XYAlignment="TopRight"
+			   TextAlignment="Centered"
+			   Width="15"
+			   Height="3"
+			   Y="9"/>
+	
+	<TextBlock Text="{DemoWelcomeBackend.FrameTimeDisplay}"
+			   XYAlignment="TopRight"
+			   TextAlignment="Centered"
+			   Width="35"
+			   Height="3"
+			   Y="13"/>
+
+	
+
 	<Line Name="DemoLine"
 		  X="50%"
 		  Y="0"
 		  ShowBorder="false"
 		  AntiAliased="true"
 		  DoubleWidth="true"
-		  Softness="2"
+		  Softness="1"
 		  IsVisible="false"
 		  Intensity="1"
 		  X1="{TestPageBackend.CurX1}" Y1="{TestPageBackend.CurY1}"
@@ -33,10 +68,5 @@
 	 	  Foreground="{TestPageBackend.AntiLineColor}"
 		  Width="95%"
 		  Height="92%"/>
-
-	<FPSCounter XYAlignment="TopRight"
-				Width="5"
-				Height="4"
-				OnFrameRendered="{DemoWelcomeBackend.CWM.FrameRendered}"/>
 
 </MUIPage>

@@ -37,7 +37,6 @@ namespace MelonUI.Default
             _entries = _currentDirectory.GetFileSystemInfos().ToList();
             _currentIndex = 0;
             _scrollOffset = 0;
-            IsVisible = true;
 
             RegisterKeyboardControl(
                 ConsoleKey.UpArrow,
@@ -154,10 +153,6 @@ namespace MelonUI.Default
         {
             if (!IsVisible) return;
 
-            if(this.ParentWindow.FocusedElement.Equals( this.Parent ))
-            {
-                this.ParentWindow.Status = $"[{_currentDirectory.FullName}]";
-            }
 
             int displayableItems = buffer.Height - 2; // Adjust for border if necessary
             int totalItems = _entries.Count;
@@ -197,7 +192,6 @@ namespace MelonUI.Default
         private void NavigateToSelectedEntry()
         {
             FileSystemInfo selectedEntry = _entries[_currentIndex];
-            ParentWindow.SetStatus($"[{selectedEntry.FullName}]");
             if (selectedEntry is DirectoryInfo directory)
             {
                 _currentDirectory = directory;

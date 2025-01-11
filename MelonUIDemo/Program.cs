@@ -13,6 +13,25 @@ using MelonUI.Helpers;
 DemoWelcomeBackend.CWM = new ConsoleWindowManager();
 DemoWelcomeBackend.CWM.EnableTitleBar = true;
 DemoWelcomeBackend.CWM.SetTitle("[MelonUI V1.0b MXML Demo (1216122424)]");
+DemoWelcomeBackend.CWM.RegisterKeyboardControl(ConsoleKey.F1, () =>
+{
+    DemoWelcomeBackend.CWM.UsePlatformSpecificRenderer = !DemoWelcomeBackend.CWM.UsePlatformSpecificRenderer;
+}, "Toggle Renderer Type");
+
+DemoWelcomeBackend.CWM.FrameRendered += framems;
+
+void framems(object? sender, EventArgs e)
+{
+    var now = DateTime.Now;
+    var dif = now - DemoWelcomeBackend.LastFrameTime;
+    DemoWelcomeBackend.FrameTimes.Insert(0,dif.TotalMilliseconds);
+    DemoWelcomeBackend.FrameTimes = DemoWelcomeBackend.FrameTimes.Take(100).ToList();
+    double fuckyou = DemoWelcomeBackend.FrameTimes.Average();
+    string bitch = fuckyou.ToString("0000.0000");
+    DemoWelcomeBackend.FrameTimeDisplay = $"LFT: {bitch}ms";
+
+    DemoWelcomeBackend.LastFrameTime = DateTime.Now;
+}
 
 TextBlock tb = new TextBlock()
 {
@@ -24,6 +43,7 @@ TextBlock tb = new TextBlock()
 };
 
 string wpxml = File.ReadAllText(@"D:\Documents\GitHub\MelonUI\MelonUIDemo\Pages\DemoMenu.xml");
+
 //string wpxml = File.ReadAllText(@"C:\Users\jhset\Desktop\test.xml");
 var WelcomePage = new MUIPage();
 var wpcompiled = WelcomePage.Compile(wpxml);

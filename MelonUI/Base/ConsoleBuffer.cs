@@ -1,30 +1,45 @@
-﻿using Pastel;
+﻿using ATL;
+using Pastel;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
 using Wcwidth;
 
 namespace MelonUI.Base
 {
     public class ConsoleBuffer
     {
-        public ConsolePixel[,] Buffer;
+        /// <summary>
+        /// Internally store pixels in a 1D array.
+        /// </summary>
+        private ConsolePixel[] buffer;
+
         public int Width { get; private set; }
         public int Height { get; private set; }
+        public Win32Renderer WRenderer { get; private set; }
+        public UnixRenderer URenderer { get; private set; }
 
-        private readonly char[] RenderBuffer;
-        private readonly int MaxBufferSize = 65535;
+        /// <summary>
+        /// Indexer so we can write: this[y, x] = ...
+        /// Instead of buffer[y*Width + x], we hide the 1D indexing here.
+        /// </summary>
+        public ConsolePixel this[int row, int col]
+        {
+            get => buffer[row * Width + col];
+            set => buffer[row * Width + col] = value;
+        }
 
         public ConsoleBuffer(int width, int height)
         {
             Width = Math.Max(1, width);
             Height = Math.Max(1, height);
-            Buffer = new ConsolePixel[Height, Width];
-            RenderBuffer = new char[MaxBufferSize];
-            Clear(Color.FromArgb(0,0,0,0));
+            // Allocate 1D array
+            buffer = new ConsolePixel[Width * Height];
+            //Clear(Color.FromArgb(0, 0, 0, 0));
         }
 
         public void Resize(int newWidth, int newHeight)
@@ -32,17 +47,22 @@ namespace MelonUI.Base
             newWidth = Math.Max(1, newWidth);
             newHeight = Math.Max(1, newHeight);
 
-            var newBuffer = new ConsolePixel[newHeight, newWidth];
+            // Allocate new 1D buffer
+            var newBuffer = new ConsolePixel[newWidth * newHeight];
             int copyWidth = Math.Min(Width, newWidth);
             int copyHeight = Math.Min(Height, newHeight);
 
-            for (int y = 0; y < copyHeight; y++)
-                for (int x = 0; x < copyWidth; x++)
-                {
-                    newBuffer[y, x] = Buffer[y, x];
-                }
+            // Copy existing pixels into new buffer
+            //for (int y = 0; y < copyHeight; y++)
+            //{
+            //    for (int x = 0; x < copyWidth; x++)
+            //    {
+            //        newBuffer[y * newWidth + x] = this[y, x];
+            //    }
+            //}
 
-            Buffer = newBuffer;
+            // Replace the old buffer
+            buffer = newBuffer;
             Width = newWidth;
             Height = newHeight;
         }
@@ -51,10 +71,12 @@ namespace MelonUI.Base
         {
             var emptyPixel = new ConsolePixel(' ', Color.Transparent, Color.Transparent, false);
             for (int y = 0; y < Height; y++)
+            {
                 for (int x = 0; x < Width; x++)
                 {
-                    Buffer[y, x] = emptyPixel;
+                    this[y, x] = emptyPixel;
                 }
+            }
         }
 
         public void Write(int x, int y, ConsoleBuffer source)
@@ -67,7 +89,7 @@ namespace MelonUI.Base
                     int targetY = y + sy;
                     if (targetX >= 0 && targetX < Width && targetY >= 0 && targetY < Height)
                     {
-                        Buffer[targetY, targetX] = source.Buffer[sy, sx];
+                        this[targetY, targetX] = source[sy, sx];
                     }
                 }
             }
@@ -81,21 +103,22 @@ namespace MelonUI.Base
                 if (charWidth == 2 && x + 1 < Width)
                 {
                     // Set the wide character
-                    Buffer[y, x] = new ConsolePixel(c, foreground, background, true);
+                    this[y, x] = new ConsolePixel(c, foreground, background, true);
                     // Set an empty character next to it that will be skipped
-                    Buffer[y, x + 1] = new ConsolePixel(' ', foreground, background, false);
+                    this[y, x + 1] = new ConsolePixel(' ', foreground, background, false);
                 }
                 else
                 {
-                    Buffer[y, x] = new ConsolePixel(c, foreground, background, false);
+                    this[y, x] = new ConsolePixel(c, foreground, background, false);
                 }
             }
         }
 
         public static int GetCharWidth(char c)
         {
-            var width = UnicodeCalculator.GetWidth(c);
-            return width;
+            var wideTable = WideTable.GetTable(Unicode.Version_15_1_0);
+            return wideTable.Exist((uint)c) ? 2 : 1;
+            //return UnicodeCalculator.GetWidth(c);
         }
 
         public static int GetStringWidth(string str)
@@ -188,43 +211,103 @@ namespace MelonUI.Base
             }
         }
 
-        public void WriteBuffer(int x, int y, ConsoleBuffer source, bool respectBackground = true)
+        public byte[] StructToBytes(ConsolePixel[] structure)
+        {
+            int size = Marshal.SizeOf(typeof(ConsolePixel)) * structure.Length;
+            byte[] arr = new byte[size];
+            IntPtr ptr = Marshal.AllocHGlobal(size);
+
+            for (int i = 0; i < structure.Length; i++)
+            {
+                try
+                {
+                    Marshal.StructureToPtr(structure[i], ptr, true);
+                    Marshal.Copy(ptr, arr, 0, size);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(ptr);
+                }
+            }
+
+            return arr;
+        }
+        public unsafe void WriteBuffer(int x, int y, ConsoleBuffer source, bool respectBackground = true)
         {
             int startX = Math.Max(0, x);
             int startY = Math.Max(0, y);
             int endX = Math.Min(Width, x + source.Width);
             int endY = Math.Min(Height, y + source.Height);
-
             if (startX >= endX || startY >= endY) return;
-
-            if (respectBackground) // Direct copy without background checks
+            // Get direct access to the underlying arrays
+            fixed (ConsolePixel* destPtr = &buffer[0])
+            fixed (ConsolePixel* sourcePtr = &source.buffer[0])
             {
-                for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
+                int width = endX - startX;
+                int sourceWidth = source.Width;
+                int destWidth = Width;
+                if (respectBackground)
                 {
-                    for (int tx = startX, sx = startX - x; tx < endX; tx++, sx++)
+                    // Direct memory copy for entire rows when possible
+                    if (startX == 0 && width == sourceWidth)
                     {
-                        Buffer[ty, tx] = source.Buffer[sy, sx];
+                        int bytesToCopy = width * sizeof(ConsolePixel);
+                        for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
+                        {
+                            Buffer.MemoryCopy(
+                                sourcePtr + (sy * sourceWidth),
+                                destPtr + (ty * destWidth),
+                                bytesToCopy,
+                                bytesToCopy);
+                        }
+                    }
+                    else
+                    {
+                        // Process multiple pixels at once using pointer arithmetic
+                        for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
+                        {
+                            ConsolePixel* srcRow = sourcePtr + (sy * sourceWidth) + (startX - x);
+                            ConsolePixel* destRow = destPtr + (ty * destWidth) + startX;
+                            // Unroll the loop for better performance
+                            int i = 0;
+                            int widthMinus4 = width - 4;
+                            for (; i < widthMinus4; i += 4)
+                            {
+                                destRow[i] = srcRow[i];
+                                destRow[i + 1] = srcRow[i + 1];
+                                destRow[i + 2] = srcRow[i + 2];
+                                destRow[i + 3] = srcRow[i + 3];
+                            }
+                            // Handle remaining pixels
+                            for (; i < width; i++)
+                            {
+                                destRow[i] = srcRow[i];
+                            }
+                        }
                     }
                 }
-            }
-            else // Copy only if source pixel background is not fully transparent
-            {
-                for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
+                else
                 {
-                    for (int tx = startX, sx = startX - x; tx < endX; tx++, sx++)
+                    // Optimize the transparency check path
+                    for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
                     {
-                        var sourcePixel = source.Buffer[sy, sx];
-                        if (sourcePixel.Background.A != 0 || sourcePixel.Foreground.A != 0)
+                        ConsolePixel* srcRow = sourcePtr + (sy * sourceWidth) + (startX - x);
+                        ConsolePixel* destRow = destPtr + (ty * destWidth) + startX;
+                        int i = 0;
+                        int widthMinus4 = width - 4;
+                        for (; i < width; i++)
                         {
-                            Buffer[ty, tx] = sourcePixel;
+                            var sourcePixel = srcRow[i];
+                            if (sourcePixel.Background.A != 0 || sourcePixel.Foreground.A != 0)
+                            {
+                                destRow[i] = sourcePixel;
+                            }
                         }
                     }
                 }
             }
         }
 
-
-        
         public void FillRect(int x, int y, int width, int height, char c, Color foreground, Color background)
         {
             for (int cy = y; cy < y + height && cy < Height; cy++)
@@ -273,15 +356,49 @@ namespace MelonUI.Base
                     int sourceY = y + sy;
                     if (sourceX >= 0 && sourceX < Width && sourceY >= 0 && sourceY < Height)
                     {
-                        sub.Buffer[sy, sx] = Buffer[sourceY, sourceX];
+                        sub[sy, sx] = this[sourceY, sourceX];
                     }
                 }
             }
             return sub;
         }
 
-        public void RenderToConsole(StreamWriter output)
+        /// <summary>
+        /// Renders to console using either the Win32Renderer or a fallback method.
+        /// </summary>
+        public void RenderToConsole(StreamWriter output, bool UsePlatformSpecificRenderer)
         {
+            // Windows Win32 API Support
+            if (UsePlatformSpecificRenderer && Win32Renderer.IsSupported)
+            {
+                if (WRenderer == null)
+                {
+                    WRenderer = new Win32Renderer(Width, Height);
+                }
+                else if (WRenderer.Width != Width || WRenderer.Height != Height)
+                {
+                    WRenderer.SetSize(Width, Height);
+                }
+
+                WRenderer.RenderToConsole(buffer);
+                return;
+            }
+            else if (UsePlatformSpecificRenderer && UnixRenderer.IsSupported)
+            {
+                if (URenderer == null)
+                {
+                    URenderer = new UnixRenderer(Width, Height);
+                }
+                else if (URenderer.Width != Width || URenderer.Height != Height)
+                {
+                    URenderer.SetSize(Width, Height);
+                }
+
+                URenderer.RenderToConsole(buffer);
+                return;
+            }
+
+            // If not using Win32Renderer, do the standard System.Console rendering
             if (Width <= 0 || Height <= 0) return;
 
             try
@@ -301,9 +418,8 @@ namespace MelonUI.Base
                             continue;
                         }
 
-                        var pixel = Buffer[y, x];
-                        char ch = pixel.Character;
-
+                        var pixel = this[y, x];
+                        char ch = pixel.Character == '\0' ? ' ' : pixel.Character;
                         string charStr = ch.ToString();
 
                         if (pixel.Foreground.A == 0 && pixel.Background.A == 0)
@@ -342,7 +458,10 @@ namespace MelonUI.Base
             }
         }
 
-        public string Screenshot(bool KeepColor)
+        /// <summary>
+        /// Renders the buffer to a string (screenshot) with optional color.
+        /// </summary>
+        public string Screenshot(bool keepColor)
         {
             if (Width <= 0 || Height <= 0) return "";
 
@@ -363,16 +482,15 @@ namespace MelonUI.Base
                             continue;
                         }
 
-                        var pixel = Buffer[y, x];
+                        var pixel = this[y, x];
                         char ch = pixel.Character;
-
                         string charStr = ch.ToString();
 
                         if (pixel.Foreground.A == 0 && pixel.Background.A == 0)
                         {
                             lineBuilder.Append(charStr);
                         }
-                        else if (KeepColor)
+                        else if (keepColor)
                         {
                             string coloredChar = charStr;
                             if (pixel.Foreground.A != 0)

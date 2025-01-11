@@ -13,6 +13,7 @@ namespace MelonUI.Default
         [Binding]
         public bool showWaveform = false;
         private GridContainer waveformGrid;
+        [Binding]
         private PlaybackManager playbackManager;
         private ATL.Track trackMetadata;
         [Binding]
@@ -22,8 +23,18 @@ namespace MelonUI.Default
 
         public MusicPlayerElement(PlaybackManager manager)
         {
-            playbackManager = manager;
+            PlaybackManager = manager;
             waveformGrid = new GridContainer(1, true, 1);
+            SetControls();
+        }
+        public MusicPlayerElement()
+        {
+            waveformGrid = new GridContainer(1, true, 1);
+            SetControls();
+        }
+
+        private void SetControls()
+        {
             RegisterKeyboardControl(ConsoleKey.C, () =>
             {
                 showControls = !showControls;
@@ -33,16 +44,16 @@ namespace MelonUI.Default
             // Playback
             RegisterKeyboardControl(ConsoleKey.Spacebar, () =>
             {
-                if(playbackManager == null)
+                if (PlaybackManager == null)
                 {
                     ParentWindow.SetStatus("No audio loaded");
                     return;
                 }
-                if (!playbackManager.GetPlayState())
+                if (!PlaybackManager.GetPlayState())
                 {
                     try
                     {
-                        playbackManager.Play();
+                        PlaybackManager.Play();
                         ParentWindow.SetStatus("Now Playing");
                     }
                     catch (Exception e)
@@ -54,7 +65,7 @@ namespace MelonUI.Default
                 {
                     try
                     {
-                        playbackManager.Pause();
+                        PlaybackManager.Pause();
                         ParentWindow.SetStatus("Playback Paused");
                     }
                     catch (Exception e)
@@ -73,7 +84,7 @@ namespace MelonUI.Default
             {
                 try
                 {
-                    playbackManager.SeekRelative(-10f);
+                    PlaybackManager.SeekRelative(-10f);
                     ParentWindow.SetStatus("-10 Seconds");
                 }
                 catch (Exception e)
@@ -91,7 +102,7 @@ namespace MelonUI.Default
             {
                 try
                 {
-                    playbackManager.SeekRelative(10f);
+                    PlaybackManager.SeekRelative(10f);
                     ParentWindow.SetStatus("+10 Seconds");
                 }
                 catch (Exception e)
@@ -109,8 +120,8 @@ namespace MelonUI.Default
             {
                 try
                 {
-                    playbackManager.SetVolume(playbackManager.GetVolume() + 0.05f);
-                    volumeCache = playbackManager.GetVolume();
+                    PlaybackManager.SetVolume(PlaybackManager.GetVolume() + 0.05f);
+                    volumeCache = PlaybackManager.GetVolume();
                     ParentWindow.SetStatus("+5 Volume");
                 }
                 catch (Exception e)
@@ -128,8 +139,8 @@ namespace MelonUI.Default
             {
                 try
                 {
-                    playbackManager.SetVolume(playbackManager.GetVolume() - 0.05f);
-                    volumeCache = playbackManager.GetVolume();
+                    PlaybackManager.SetVolume(PlaybackManager.GetVolume() - 0.05f);
+                    volumeCache = PlaybackManager.GetVolume();
                     ParentWindow.SetStatus("-5 Volume");
                 }
                 catch (Exception e)
@@ -145,9 +156,9 @@ namespace MelonUI.Default
             }, "Volume Down");
             RegisterKeyboardControl(ConsoleKey.W, () =>
             {
-                if (playbackManager == null)
+                if (PlaybackManager == null)
                 {
-                    ParentWindow.SetStatus("No audio loaded");
+                    //ParentWindow.SetStatus("No audio loaded");
                     return;
                 }
 
@@ -158,15 +169,19 @@ namespace MelonUI.Default
                         waveformGrid.RenderThreadDeleteMe = true;
                         showWaveform = false;
                     });
+                    showWaveform = false;
                     return;
                 }
 
                 showWaveform = true;
 
-                Waveform wf = new Waveform(playbackManager)
+                Waveform wf = new Waveform(PlaybackManager)
                 {
+                    X = "0",
+                    Y = "0",
+                    Width = "100%",
+                    Height = "80%",
                     Name = "MPAudioWaveform",
-                    ShowBorder = false
                 };
                 wf.RegisterKeyboardControl(ConsoleKey.W, () =>
                 {
@@ -182,7 +197,7 @@ namespace MelonUI.Default
                     var numY = int.Parse(AbsRect.Y.Replace("%", ""));
                     var numWidth = int.Parse(AbsRect.Width.Replace("%", ""));
                     var numHeight = int.Parse(AbsRect.Height.Replace("%", ""));
-                    if (numY > 50 )
+                    if (numY > 50)
                     {
                         int statusBlock = (int)Math.Round(((Console.WindowHeight - 3.0f) / Console.WindowHeight * 100.0f));
                         int remaining = (statusBlock) - numY;
@@ -218,78 +233,82 @@ namespace MelonUI.Default
                     }
                 }
 
-                waveformGrid.AddElement(wf, 0, 0);
-                ParentWindow.AddElement(waveformGrid);
+                if (Parent.GetType().IsAssignableFrom(typeof(MUIPage)))
+                {
+                    Parent.Children.Add(wf);
+                }
+                else
+                {
+                    ParentWindow.AddElement(wf);
+                }
             }, "Open Waveform Display");
             RegisterKeyboardControl(ConsoleKey.O, () =>
             {
                 try
                 {
-                    var filepickergrid = new GridContainer(1, true, 1)
+                    FilePicker picker = new FilePicker(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic))
                     {
                         X = "25%",
                         Y = "25%",
                         Width = "55%",
                         Height = "55%",
-                        Name = "MPFilePickerGrid"
-                    };
-                    FilePicker picker = new FilePicker(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic))
-                    {
-                        ShowBorder = false,
+                        IsVisible = true,
                         Name = "MPFilePicker"
                     };
                     picker.OnFileSelected += () =>
                     {
-                        // On file select, close picker
-                        filepickergrid.AnimateClose(() =>
+                        filename = Path.GetFileName(picker.Path);
+                        // Remove File Picker
+                        picker.RenderThreadDeleteMe = true;
+
+                        // Setup the audio manager based on the audio selected
+                        if (PlaybackManager != null)
                         {
-                            filename = Path.GetFileName(picker.Path);
-                            // Remove File Picker
-                            filepickergrid.RenderThreadDeleteMe = true;
-
-                            // Setup the audio manager based on the audio selected
-                            if (playbackManager != null)
+                            PlaybackManager.Dispose();
+                            if (showWaveform)
                             {
-                                playbackManager.Dispose();
-                                if (showWaveform)
+                                if (waveformGrid != null)
                                 {
-                                    if (waveformGrid != null) 
-                                    { 
-                                        Waveform wf = new Waveform(playbackManager)
-                                        {
-                                            Name = "MPAudioWaveform",
-                                            ShowBorder = false
-                                        };
-                                        wf.RegisterKeyboardControl(ConsoleKey.W, () =>
-                                        {
-                                            waveformGrid.RenderThreadDeleteMe = true;
-                                            showWaveform = false;
-                                        }, "Open File");
-                                        waveformGrid.Children.Clear();
-                                        waveformGrid.AddElement(wf, 0, 0);
-                                    }
-
+                                    Waveform wf = new Waveform(PlaybackManager)
+                                    {
+                                        Name = "MPAudioWaveform",
+                                        ShowBorder = false
+                                    };
+                                    wf.RegisterKeyboardControl(ConsoleKey.W, () =>
+                                    {
+                                        waveformGrid.RenderThreadDeleteMe = true;
+                                        showWaveform = false;
+                                    }, "Show Waveform");
+                                    waveformGrid.Children.Clear();
+                                    waveformGrid.AddElement(wf, 0, 0);
                                 }
+
                             }
+                        }
 
-                            Task.Run(() =>
+                        Task.Run(() =>
+                        {
+                            try
                             {
-                                try
-                                {
-                                    playbackManager = new AudioPlaybackManager(picker.Path);
-                                    playbackManager.SetVolume(volumeCache);
-                                    trackMetadata = new ATL.Track(picker.Path);
-                                }
-                                catch (Exception ex)
-                                {
-                                    ParentWindow.SetStatus("File Loading Error!");
-                                }
-                            });
+                                PlaybackManager = new AudioPlaybackManager(picker.Path);
+                                PlaybackManager.SetVolume(volumeCache);
+                                trackMetadata = new ATL.Track(picker.Path);
+                            }
+                            catch (Exception ex)
+                            {
+                                ParentWindow.SetStatus("File Loading Error!");
+                            }
                         });
 
                     };
-                    filepickergrid.AddElement(picker, 0, 0);
-                    ParentWindow.AddElement(filepickergrid, true);
+                    if (Parent.GetType().IsAssignableFrom(typeof(MUIPage)))
+                    {
+                        Parent.Children.Add(picker);
+                    }
+                    else
+                    {
+                        ParentWindow.AddElement(picker);
+                    }
                     picker.Show();
                 }
                 catch (Exception e)
@@ -301,18 +320,18 @@ namespace MelonUI.Default
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
-            if (showControls)
-            {
-                RenderControlsView(buffer);
-            }
-            else if (playbackManager == null)
-            {
-                RenderMissingFileView(buffer);
-            }
-            else
-            {
-                RenderPlayerView(buffer);
-            }
+            //if (showControls)
+            //{
+            //    RenderControlsView(buffer);
+            //}
+            //else if (PlaybackManager == null)
+            //{
+            //    RenderMissingFileView(buffer);
+            //}
+            //else
+            //{
+            //    RenderPlayerView(buffer);
+            //}
         }
         private void RenderMissingFileView(ConsoleBuffer buffer)
         {
@@ -332,11 +351,11 @@ namespace MelonUI.Default
 
         private void RenderPlayerView(ConsoleBuffer buffer)
         {
-            if (playbackManager.GetPosition() >= playbackManager.Duration)
+            if (PlaybackManager.GetPosition() >= PlaybackManager.Duration)
             {
-                playbackManager.Pause();
-                playbackManager.Dispose();
-                playbackManager = null;
+                PlaybackManager.Pause();
+                PlaybackManager.Dispose();
+                PlaybackManager = null;
             }
 
             int width = ActualWidth - 2;  // Account for borders
@@ -361,8 +380,8 @@ namespace MelonUI.Default
 
             // Progress Bar
             int progressY = bumpY + 5;
-            var curTimeSpan = playbackManager != null ? playbackManager.GetPosition() : TimeSpan.MinValue;
-            var totalTimeSpan = playbackManager != null ? playbackManager.GetDuration() : TimeSpan.MinValue;
+            var curTimeSpan = PlaybackManager != null ? PlaybackManager.GetPosition() : TimeSpan.MinValue;
+            var totalTimeSpan = PlaybackManager != null ? PlaybackManager.GetDuration() : TimeSpan.MinValue;
             string currentTime = curTimeSpan.ToString("hh\\:mm\\:ss");
             string totalTime = totalTimeSpan.ToString("hh\\:mm\\:ss");
             float progress = (float)curTimeSpan.Ticks / totalTimeSpan.Ticks;
@@ -386,7 +405,7 @@ namespace MelonUI.Default
             // Volume Bar
             int volumeY = bumpY + 6;
             float totalVol = 1.0f;
-            float volumePercent = playbackManager != null ? playbackManager.GetVolume() : volumeCache;
+            float volumePercent = PlaybackManager != null ? PlaybackManager.GetVolume() : volumeCache;
             char volChar = GetPixelChar(volumePercent);
             string volumePercentString = $"{(volumePercent * 100).ToString("0")}% {volChar.ToString()}".ToString(); 
 

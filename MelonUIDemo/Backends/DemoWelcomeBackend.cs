@@ -16,6 +16,13 @@ namespace MelonUIDemo.Backends
         // Properties cannot be found without {get;set;} methods defined.
         public static ConsoleWindowManager CWM { get; set; }
         public static CancellationTokenSource CancelSource = new CancellationTokenSource();
+
+        public static string RenderTypeDisplay => CWM.UsePlatformSpecificRenderer ? Win32Renderer.IsSupported ? "Win32" : "Unix" : "SysV2";
+        public static string ConsoleSizeDisplay => $"W/H: {Console.WindowWidth}/{Console.WindowHeight}";
+        public static string FrameTimeDisplay { get; set; } = $"Frame Time: UKN";
+        public static DateTime LastFrameTime = DateTime.Now;
+        public static List<double> FrameTimes = new List<double>();
+        //public static PlaybackManager playbackManager { get; set; } = new AudioPlaybackManager(@"G:\Music\Soundbites\Jai Wolf\Hikikomori [186213058] [2021]\01 - Jai Wolf - Hikikomori (Demo).flac");
         public static string WelcomeText { get; set; }
             = "[Color(72, 168, 241)]MelonUI V1.0b MXML Demo (1216122424)\n" +
               "[Color(255, 255, 255)]Any file you enter will be watched for changes, and update the MUIPage on file save.\n" +
