@@ -117,13 +117,15 @@
 		   - Waveform
 		   - Worklog
 		 - Documentation
+		 (Complete) Platform Renderers
 		 - "Auto" Layout type
 		 (COMPLETE) Make UIElement Background transparency work correctly everywhere pls
 		 
 		 ## Known Issues
 		 - Some Default UIElements are unfinished, while all of them work some of them may have properties that
 		   do not, or are not fully implemented.
-		 - 
+		 - Conhost.exe on windows is *far* slower than the Windows Terminal or Linux Terminals.
+		 
 		 
 		 ## Future Plans
 		 - MultiLine TextBox / Editable Listbox
