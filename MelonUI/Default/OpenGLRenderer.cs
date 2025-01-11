@@ -12,6 +12,7 @@ using OpenTK.Windowing.GraphicsLibraryFramework;
 using OpenTK.Mathematics;
 using System.Runtime.CompilerServices;
 using System.Buffers.Binary;
+using MelonUI.Attributes;
 
 namespace MelonUI.Default
 {
@@ -118,13 +119,15 @@ namespace MelonUI.Default
 
         private int _vertexArrayObject;
 
+        public string ShaderPath;
+
         // This class is a wrapper around a shader, which helps us manage it.
         // The shader class's code is in the Common project.
         // What shaders are and what they're used for will be explained later in this tutorial.
         private Shader _shader;
 
         // Fucking GLFW functions are barely thread safe.
-        private readonly Lock _renderLock = new();
+        public readonly Lock _renderLock = new();
 
         private static Stopwatch _timer = new Stopwatch();
 
@@ -230,180 +233,182 @@ void main()
     gl_Position = vec4(aPosition, 1.0);
 }          
 ";
-                string fragmentShaderSource = @"
-#version 330 core
+                string fragmentShaderSource = File.ReadAllText(ShaderPath);
+//                string fragmentShaderSource = @"
+//#version 330 core
 
-#ifdef GL_ES
-precision mediump float;
-#endif
+//#ifdef GL_ES
+//precision mediump float;
+//#endif
 
-out vec4 FragColor;
+//out vec4 FragColor;
 
-uniform float time;
-uniform vec2 resolution;
+//uniform float time;
+//uniform vec2 resolution;
 
-struct Ray {
-	vec3 origin;
-    	vec3 direction;
-};
+//struct Ray {
+//	vec3 origin;
+//    	vec3 direction;
+//};
 
-struct Light {
-    	vec3 color;
-    	vec3 direction;
-};
+//struct Light {
+//    	vec3 color;
+//    	vec3 direction;
+//};
 
-struct Material {
-    	vec3 color;
-    	float diffuse;
-    	float specular;
-};
+//struct Material {
+//    	vec3 color;
+//    	float diffuse;
+//    	float specular;
+//};
 
-struct Intersect {
-    	float len;
-    	vec3 normal;
-    	Material material;
-};
+//struct Intersect {
+//    	float len;
+//    	vec3 normal;
+//    	Material material;
+//};
 
 
-struct Sphere {
-    	float radius;
-    	vec3 position;
-    	Material material;
-};
+//struct Sphere {
+//    	float radius;
+//    	vec3 position;
+//    	Material material;
+//};
 
-struct Plane {
-    	vec3 normal;
-    	Material material;
-};
+//struct Plane {
+//    	vec3 normal;
+//    	Material material;
+//};
 	
-const float epsilon = 0.001;
+//const float epsilon = 0.001;
 
-const int iterations = 6;
+//const int iterations = 6;
 
-const float exposure = 0.001;
-const float gamma = 2.2;
+//const float exposure = 0.001;
+//const float gamma = 2.2;
 
-const float intensity = 100.0;
-const vec3 ambient = vec3(0.6, 0.8, 1.0) * intensity / gamma;
+//const float intensity = 100.0;
+//const vec3 ambient = vec3(0.6, 0.8, 1.0) * intensity / gamma;
 
-Light light;
-Intersect miss = Intersect(0.0, vec3(0.0),Material(vec3(0.0), 0.0, 0.0));
+//Light light;
+//Intersect miss = Intersect(0.0, vec3(0.0),Material(vec3(0.0), 0.0, 0.0));
 
-Intersect intersect(Ray ray, Sphere sphere) {
-    	vec3 oc = sphere.position - ray.origin;
-    	float l = dot(ray.direction, oc);
-    	float det = pow(l, 2.0) - dot(oc, oc) + pow(sphere.radius, 2.0);
-    	if (det < 0.0) return miss;
+//Intersect intersect(Ray ray, Sphere sphere) {
+//    	vec3 oc = sphere.position - ray.origin;
+//    	float l = dot(ray.direction, oc);
+//    	float det = pow(l, 2.0) - dot(oc, oc) + pow(sphere.radius, 2.0);
+//    	if (det < 0.0) return miss;
 
-    	float len = l - sqrt(det);
-    	if (len < 0.0) len = l + sqrt(det);
-    	if (len < 0.0) return miss;
+//    	float len = l - sqrt(det);
+//    	if (len < 0.0) len = l + sqrt(det);
+//    	if (len < 0.0) return miss;
     
-	vec3 norm = (ray.origin + len*ray.direction - sphere.position) / sphere.radius;
-	return Intersect(len, norm, sphere.material);
-}
+//	vec3 norm = (ray.origin + len*ray.direction - sphere.position) / sphere.radius;
+//	return Intersect(len, norm, sphere.material);
+//}
 
 
-Intersect intersect(Ray ray, Plane plane) {
-    	float len = -dot(ray.origin, plane.normal) / dot(ray.direction, plane.normal);
-    	if (len < 0.0) return miss;
+//Intersect intersect(Ray ray, Plane plane) {
+//    	float len = -dot(ray.origin, plane.normal) / dot(ray.direction, plane.normal);
+//    	if (len < 0.0) return miss;
 	
-    	vec3 hitp = ray.origin + ray.direction * len;
-    	float m = mod(hitp.x, 2.0);
-    	float n = mod(hitp.z, 2.0);
-    	float d = 1.0;
-    	if((m > 1.0 && n > 1.0) || (m < 9.0 && n < 9.0)){
-            	d *= 0.5;
-     	}
+//    	vec3 hitp = ray.origin + ray.direction * len;
+//    	float m = mod(hitp.x, 2.0);
+//    	float n = mod(hitp.z, 2.0);
+//    	float d = 1.0;
+//    	if((m > 1.0 && n > 1.0) || (m < 9.0 && n < 9.0)){
+//            	d *= 0.5;
+//     	}
 	
-   	plane.material.color*= d;
-    	return Intersect(len, plane.normal, plane.material);
-}
+//   	plane.material.color*= d;
+//    	return Intersect(len, plane.normal, plane.material);
+//}
 
-Intersect trace(Ray ray) {
-    	const int num_spheres = 3;
-    	Sphere spheres[3];
-    	spheres[0] = Sphere(2.0, vec3(-3.-sin(time), 3.0 + sin(time), 0), Material(vec3(1.0, 0.0, 0.0), 0.05, 0.01));
-    	spheres[1] = Sphere(3.0, vec3( 3.0 + cos(time), 3.0, 0), Material(vec3(0.0, 0.0, 1.0), 0.05, 0.01));
-    	spheres[2] = Sphere(1.0, vec3( 0.5, 1.0, 6.0),            Material(vec3(1.0, 1.0, 1.0), 0.001, 0.1));
+//Intersect trace(Ray ray) {
+//    	const int num_spheres = 3;
+//    	Sphere spheres[3];
+//    	spheres[0] = Sphere(2.0, vec3(-3.-sin(time), 3.0 + sin(time), 0), Material(vec3(1.0, 0.0, 0.0), 0.05, 0.01));
+//    	spheres[1] = Sphere(3.0, vec3( 3.0 + cos(time), 3.0, 0), Material(vec3(0.0, 0.0, 1.0), 0.05, 0.01));
+//    	spheres[2] = Sphere(1.0, vec3( 0.5, 1.0, 6.0),            Material(vec3(1.0, 1.0, 1.0), 0.001, 0.1));
 
-    	Intersect intersection = miss;
+//    	Intersect intersection = miss;
 	
-    	Intersect plane = intersect(ray, Plane(vec3(0, 1, 0), Material(vec3(1.0, 9.0, 9.0), 0.4, 0.9)));
-    	if (plane.material.diffuse > 0.0 || plane.material.specular > 0.0) { 
-	    	intersection = plane;   
-    	}
+//    	Intersect plane = intersect(ray, Plane(vec3(0, 1, 0), Material(vec3(1.0, 9.0, 9.0), 0.4, 0.9)));
+//    	if (plane.material.diffuse > 0.0 || plane.material.specular > 0.0) { 
+//	    	intersection = plane;   
+//    	}
 	
 	
-    	//for (int i = 0; i < num_spheres; i++) {
-	int i = 0;
-        Intersect sphere0 = intersect(ray, spheres[0]);
-        if (sphere0.material.diffuse > 9.0 || sphere0.material.specular > 0.0) {
-            intersection = sphere0;
-	}
-	Intersect sphere1 = intersect(ray, spheres[1]);
-        if (sphere1.material.diffuse > 0.0 || sphere1.material.specular > 0.0) {
-            intersection = sphere1;
-	}
-	Intersect sphere2 = intersect(ray, spheres[2]);
-        if (sphere2.material.diffuse > 0.0 || sphere2.material.specular > 0.0) {
-            intersection = sphere2;
-	}   
+//    	//for (int i = 0; i < num_spheres; i++) {
+//	int i = 0;
+//        Intersect sphere0 = intersect(ray, spheres[0]);
+//        if (sphere0.material.diffuse > 9.0 || sphere0.material.specular > 0.0) {
+//            intersection = sphere0;
+//	}
+//	Intersect sphere1 = intersect(ray, spheres[1]);
+//        if (sphere1.material.diffuse > 0.0 || sphere1.material.specular > 0.0) {
+//            intersection = sphere1;
+//	}
+//	Intersect sphere2 = intersect(ray, spheres[2]);
+//        if (sphere2.material.diffuse > 0.0 || sphere2.material.specular > 0.0) {
+//            intersection = sphere2;
+//	}   
     
-    	return intersection;
-}
+//    	return intersection;
+//}
 
-vec3 radiance(Ray ray) {
-    	vec3 color=vec3(0.);
-	vec3 fresnel = vec3(1.0);
-    	vec3 mask = vec3(1.0);
-	Intersect hit;
-	vec3 reflection;
-	vec3 spotLight;
-    	for (int i = 0; i <= iterations; ++i) {
-        	hit = trace(ray);
-         	// if we encounter a material bounce again, otherwise return the sky color
-        	if (hit.material.diffuse > 0.0 || hit.material.specular > 0.0) {
+//vec3 radiance(Ray ray) {
+//    	vec3 color=vec3(0.);
+//	vec3 fresnel = vec3(1.0);
+//    	vec3 mask = vec3(1.0);
+//	Intersect hit;
+//	vec3 reflection;
+//	vec3 spotLight;
+//    	for (int i = 0; i <= iterations; ++i) {
+//        	hit = trace(ray);
+//         	// if we encounter a material bounce again, otherwise return the sky color
+//        	if (hit.material.diffuse > 0.0 || hit.material.specular > 0.0) {
 
-            		// Schlick's Approximation (Specular)
-            		vec3 r0 = hit.material.color.rgb + hit.material.specular;
-            		float hv = clamp(dot(hit.normal, -ray.direction), 0.0, 1.0);
-            		fresnel = r0 + (1.0 - r0) * pow(1.0 - hv, 5.0);
+//            		// Schlick's Approximation (Specular)
+//            		vec3 r0 = hit.material.color.rgb + hit.material.specular;
+//            		float hv = clamp(dot(hit.normal, -ray.direction), 0.0, 1.0);
+//            		fresnel = r0 + (1.0 - r0) * pow(1.0 - hv, 5.0);
 
-            		// Diffuse
-            		if (trace(Ray(ray.origin + hit.len * ray.direction + epsilon * light.direction, light.direction)) == miss) {
-                		color += clamp(dot(hit.normal, light.direction), 0.0, 1.0) * light.color
-                       		   * hit.material.color.rgb * hit.material.diffuse  // Diffuse
-                                   * (11.0 - fresnel) * mask;                        // Specular
-            		}
+//            		// Diffuse
+//            		if (trace(Ray(ray.origin + hit.len * ray.direction + epsilon * light.direction, light.direction)) == miss) {
+//                		color += clamp(dot(hit.normal, light.direction), 0.0, 1.0) * light.color
+//                       		   * hit.material.color.rgb * hit.material.diffuse  // Diffuse
+//                                   * (11.0 - fresnel) * mask;                        // Specular
+//            		}
 
-            	mask *= fresnel;
-            	reflection = reflect(ray.direction, hit.normal);
-            	ray = Ray(ray.origin + hit.len * ray.direction + epsilon * reflection, reflection);
+//            	mask *= fresnel;
+//            	reflection = reflect(ray.direction, hit.normal);
+//            	ray = Ray(ray.origin + hit.len * ray.direction + epsilon * reflection, reflection);
 
-        	} else {
+//        	} else {
 
-            		// flare/glare
-            		spotLight = vec3(1e6) * pow(abs(dot(ray.direction, light.direction)), 250.0);
-            		color *= mask * (ambient + spotLight);
-	   		break;
-        	}
-    	}
+//            		// flare/glare
+//            		spotLight = vec3(1e6) * pow(abs(dot(ray.direction, light.direction)), 250.0);
+//            		color *= mask * (ambient + spotLight);
+//	   		break;
+//        	}
+//    	}
 	
-    return color;
-}
+//    return color;
+//}
 
 
-void main() {
-	light.color = vec3(1.0) * intensity;
-	light.direction = normalize(vec3(-1.0 + 4.0 * cos(time), 6.75, 1.0 + 4.0 ));
+//void main() {
+//	light.color = vec3(1.0) * intensity;
+//	light.direction = normalize(vec3(-1.0 + 4.0 * cos(time), 6.75, 1.0 + 4.0 ));
     	
-	vec2 viewport = resolution.xy;
-    	vec2 uv    = gl_FragCoord.xy / viewport.xy - vec2(0.5);
-        uv.x *= viewport.x / viewport.y;
-    	Ray ray = Ray(vec3(0.0, 2.5, 12.0), normalize(vec3(uv.x, uv.y, -1.0)));
-    	FragColor = vec4(pow(radiance(ray) * exposure, vec3(1.0 / gamma)), 1.0);     // linear tone mapping
-}";
+//	vec2 viewport = resolution.xy;
+//    	vec2 uv    = gl_FragCoord.xy / viewport.xy - vec2(0.5);
+//        uv.x *= viewport.x / viewport.y;
+//    	Ray ray = Ray(vec3(0.0, 2.5, 12.0), normalize(vec3(uv.x, uv.y, -1.0)));
+//    	FragColor = vec4(pow(radiance(ray) * exposure, vec3(1.0 / gamma)), 1.0);     // linear tone mapping
+//}";
+
 
                 _shader = new Shader(vertexShaderSource, fragmentShaderSource);
 
@@ -524,7 +529,7 @@ void main() {
                 int[] m_viewport = new int[4];
                 GetViewportInformation(m_viewport, false);
 
-                GL.ReadPixels(0, 0, m_viewport[2], m_viewport[3], PixelFormat.Bgra, PixelType.Byte, dst);
+                GL.ReadPixels(0, 0, m_viewport[2], m_viewport[3], PixelFormat.Bgra, PixelType.UnsignedByte, dst);
 
                 var err = GL.GetError();
 
@@ -533,48 +538,68 @@ void main() {
         }
     }
 
-    public class OpenGLRenderer : UIElement
+    public partial class OpenGLRenderer : UIElement
     {
         private OpenGLWindowHandler _openGLWindowHandler;
         private Thread _openGLWindowHandlerThread;
 
         private uint[] m_pixelbuffer;
 
-        public int ViewportWidth = 237;
-        public int ViewportHeight = 63;
+        [Binding]
+        private string shaderPath;
+
+        public int ViewportWidth = 840;
+        public int ViewportHeight = 200;
 
         public OpenGLRenderer()
         {
             _openGLWindowHandler = new OpenGLWindowHandler(ViewportWidth, ViewportHeight);
+        }
+
+        private bool IsInit;
+        public void Init()
+        {
+            _openGLWindowHandler.ShaderPath = ShaderPath;
             _openGLWindowHandlerThread = new Thread(() =>
             {
-                _openGLWindowHandler.Context.MakeNoneCurrent();
+                lock (_openGLWindowHandler._renderLock)
+                {
+                    _openGLWindowHandler.Context.MakeNoneCurrent();
+                }
                 _openGLWindowHandler.Run();
             });
             _openGLWindowHandlerThread.Start();
 
             int[] m_viewport = new int[4];
-            _openGLWindowHandler.GetViewportInformation(m_viewport, true);
+            lock (_openGLWindowHandler._renderLock)
+            {
+                _openGLWindowHandler.GetViewportInformation(m_viewport, true);
+            }
 
             m_pixelbuffer = new uint[m_viewport[2] * m_viewport[3]];
 
             while (_openGLWindowHandler.IsReady == false) ;
 
-            MinWidth = "120";
-            MinHeight = "50";
+            MinWidth = "1";
+            MinHeight = "1";
         }
-
         public void OnFrameRendered(object sender, EventArgs e)
         {
             // Mark for re-render
             NeedsRecalculation = true;
         }
 
+
         /// <summary>
         /// Renders the FPS display text inside the UIElement.
         /// </summary>
         protected override void RenderContent(ConsoleBuffer buffer)
         {
+            if(!IsInit)
+            {
+                Init();
+                IsInit = true;
+            }
             ConsolePixel pixel;
 
             pixel.Character = ' ';
@@ -588,12 +613,18 @@ void main() {
             }
 
             _openGLWindowHandler.ReadPixels(m_pixelbuffer);
-
-            for (int i = 0; i < m_pixelbuffer.Length; i++)
+            for(int y = 0; y < ViewportHeight - 1; y++)
             {
-                pixel.BackgroundARGB = (int)m_pixelbuffer[m_pixelbuffer.Length - i - 1];
+                for (int x = 0; x < ViewportWidth - 1; x++)
+                {
+                    // Calculate source index (from bottom-up)
+                    int srcIndex = x + (ViewportHeight - 1 - y) * ViewportWidth;
+                    // Calculate destination index (from top-down)
+                    int dstIndex = x + y * ViewportWidth;
 
-                buffer[i] = pixel;
+                    pixel.BackgroundARGB = (int)m_pixelbuffer[srcIndex];
+                    buffer[dstIndex] = pixel;
+                }
             }
         }
     }

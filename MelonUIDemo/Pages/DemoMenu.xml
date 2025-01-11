@@ -9,6 +9,7 @@
 
 	<MusicPlayerElement
 			   Width="30%"
+			   IsVisible="false"
 		   Y="50%"
 			   Height="20%"/>
 	<FPSCounter XYAlignment="TopRight"
@@ -52,8 +53,9 @@
 			   Height="3"
 			   Y="13"/>
 
-		  <OpenGLRenderer XYAlignment="TopRight"
-				Width="237"
-				Height="63"/>
+		  <OpenGLRenderer 
+			  ShaderPath="C:\Users\jhset\Downloads\try3.txt"
+				Width="100%"
+				Height="100%"/>
 
 </MUIPage>

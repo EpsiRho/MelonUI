@@ -9,6 +9,7 @@ using MelonUI.Base;
 using MelonUIDemo.Backends;
 using Pastel;
 using MelonUI.Helpers;
+using System.Threading;
 
 DemoWelcomeBackend.CWM = new ConsoleWindowManager();
 DemoWelcomeBackend.CWM.EnableTitleBar = true;
@@ -42,7 +43,7 @@ TextBlock tb = new TextBlock()
     Height = "50%",
 };
 
-string wpxml = File.ReadAllText(@"C:\Users\atom0\Desktop\GitHub\MelonUI\MelonUIDemo\Pages\DemoMenu.xml");
+string wpxml = File.ReadAllText(@"C:\Users\jhset\Desktop\MelonUIogl\MelonUIDemo\Pages\DemoMenu.xml");
 
 //string wpxml = File.ReadAllText(@"C:\Users\jhset\Desktop\test.xml");
 var WelcomePage = new MUIPage();
