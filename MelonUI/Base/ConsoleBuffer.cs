@@ -33,6 +33,15 @@ namespace MelonUI.Base
             set => buffer[row * Width + col] = value;
         }
 
+        /// <summary>
+        /// note from hypervis0r: fuck your indexing epsi
+        /// </summary>
+        public ConsolePixel this[int index]
+        {
+            get => buffer[index];
+            set => buffer[index] = value;
+        }
+
         public ConsoleBuffer(int width, int height)
         {
             Width = Math.Max(1, width);

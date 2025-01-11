@@ -52,21 +52,8 @@
 			   Height="3"
 			   Y="13"/>
 
-	
-
-	<Line Name="DemoLine"
-		  X="50%"
-		  Y="0"
-		  ShowBorder="false"
-		  AntiAliased="true"
-		  DoubleWidth="true"
-		  Softness="1"
-		  IsVisible="false"
-		  Intensity="1"
-		  X1="{TestPageBackend.CurX1}" Y1="{TestPageBackend.CurY1}"
-		  X2="{TestPageBackend.CurX2}" Y2="{TestPageBackend.CurY2}"
-	 	  Foreground="{TestPageBackend.AntiLineColor}"
-		  Width="95%"
-		  Height="92%"/>
+		  <OpenGLRenderer XYAlignment="TopRight"
+				Width="237"
+				Height="63"/>
 
 </MUIPage>

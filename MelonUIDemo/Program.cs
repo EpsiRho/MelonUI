@@ -42,7 +42,7 @@ TextBlock tb = new TextBlock()
     Height = "50%",
 };
 
-string wpxml = File.ReadAllText(@"D:\Documents\GitHub\MelonUI\MelonUIDemo\Pages\DemoMenu.xml");
+string wpxml = File.ReadAllText(@"C:\Users\atom0\Desktop\GitHub\MelonUI\MelonUIDemo\Pages\DemoMenu.xml");
 
 //string wpxml = File.ReadAllText(@"C:\Users\jhset\Desktop\test.xml");
 var WelcomePage = new MUIPage();
