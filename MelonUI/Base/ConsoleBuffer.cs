@@ -16,7 +16,7 @@ namespace MelonUI.Base
         /// <summary>
         /// Internally store pixels in a 1D array.
         /// </summary>
-        private ConsolePixel[] buffer;
+        public ConsolePixel[] buffer;
 
         public int Width { get; private set; }
         public int Height { get; private set; }

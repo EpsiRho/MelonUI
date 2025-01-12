@@ -7,6 +7,8 @@ using MelonUI.Base;
 using static System.Net.Mime.MediaTypeNames;
 using MelonUI.Managers;
 using Microsoft.Win32.SafeHandles;
+using System.Text;
+using System.Numerics;
 
 public class Win32Renderer
 {
@@ -31,6 +33,11 @@ public class Win32Renderer
         int nNumberOfCharsToWrite,
         out int lpNumberOfCharsWritten,
         IntPtr lpReserved);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetConsoleScreenBufferInfo(
+        IntPtr hConsoleOutput,
+        out CONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo);
 
     private readonly IntPtr consoleHandle;
     private readonly bool vtProcessingEnabled;
@@ -68,23 +75,12 @@ public class Win32Renderer
         writeBuffer = new char[bufferSize];
     }
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetCurrentConsoleFont(IntPtr hConsoleOutput, bool bMaximumWindow, ref CONSOLE_FONT_INFO lpConsoleCurrentFont);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern COORD GetConsoleFontSize(IntPtr hConsoleOutput, int nFont);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr GetConsoleWindow();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetWindowInfo(IntPtr hwnd, ref WINDOWINFO pwi);
 
 
 
     // Structure to hold rectangle coordinates
     [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
+    public struct RECT
     {
         public int Left;
         public int Top;
@@ -92,7 +88,7 @@ public class Win32Renderer
         public int Bottom;
     }
     [StructLayout(LayoutKind.Sequential)]
-    private struct WINDOWINFO
+    public struct WINDOWINFO
     {
         public uint cbSize;
         public RECT rcWindow;
@@ -106,32 +102,55 @@ public class Win32Renderer
         public ushort wCreatorVersion;
     }
     [StructLayout(LayoutKind.Sequential)]
-    private struct COORD
+    public struct COORD
     {
         public short X;
         public short Y;
     }
+
     [StructLayout(LayoutKind.Sequential)]
-    private struct CONSOLE_FONT_INFO
+    public struct SMALL_RECT
     {
-        public int nFont;
-        public COORD dwFontSize;
+        public short Left;
+        public short Top;
+        public short Right;
+        public short Bottom;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct CONSOLE_SCREEN_BUFFER_INFO
+    public struct CONSOLE_SCREEN_BUFFER_INFO
     {
         public COORD dwSize;
         public COORD dwCursorPosition;
-        public ushort wAttributes;
-        public RECT srWindow;
+        public short wAttributes;
+        public SMALL_RECT srWindow;
         public COORD dwMaximumWindowSize;
     }
 
+    public static CONSOLE_SCREEN_BUFFER_INFO GetBufferInfo()
+    {
+        // Get the handle to the standard output
+        IntPtr hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+
+        if (hConsoleOutput == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("Unable to get standard output handle.");
+        }
+
+        // Retrieve the console screen buffer info
+        if (!GetConsoleScreenBufferInfo(hConsoleOutput, out CONSOLE_SCREEN_BUFFER_INFO bufferInfo))
+        {
+            int errorCode = Marshal.GetLastWin32Error();
+            throw new System.ComponentModel.Win32Exception(errorCode, "Failed to retrieve console screen buffer info.");
+        }
+
+        return bufferInfo;
+    }
 
     public static (int width, int height) GetConsoleWindowSize()
     {
-
+        //var info = GetBufferInfo();
+        //return (info.dwSize.X, info.dwSize.Y);
         return (Console.WindowWidth, Console.WindowHeight);
     }
 
@@ -167,10 +186,23 @@ public class Win32Renderer
                     ref ConsolePixel pixel = ref buffer[bufferIndex++];
 
                     // Check if we need to flush
-                    if (maxLength - writeOffset < CHARS_PER_PIXEL)
+                    //if (maxLength - writeOffset < CHARS_PER_PIXEL)
+                    //{
+                    //    WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero);
+                    //    writeOffset = 0;
+                    //}
+
+                    // Character is a raw pixel from OpenGL
+                    if (pixel.Character == '\xFFFF')
                     {
-                        WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero);
-                        writeOffset = 0;
+                        var ole = pixel.ToOleColor();
+                        writeOffset += FormatColorSequence(writeBuffer, writeOffset, false, (byte)pixel.R , (byte)pixel.G, (byte)pixel.B);
+
+                        lastBg = ole;
+
+                        writeBuffer[writeOffset++] = ' ';
+
+                        continue;
                     }
 
                     // Handle foreground color
@@ -237,12 +269,17 @@ public class Win32Renderer
         }
     }
 
+    static readonly char[] prefixForeground = new[] { '\x1b', '[', '3', '8', ';', '2', ';' };
+    static readonly char[] prefixBackground = new[] { '\x1b', '[', '4', '8', ';', '2', ';' };
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int FormatColorSequence(char[] buffer, int offset, bool isForeground, Color color)
     {
         // Format: \x1b[38;2;R;G;Bm or \x1b[48;2;R;G;Bm
-        char[] prefix = new[] { '\x1b', '[', (char)(isForeground ? '3' : '4'), '8', ';', '2', ';' };
-        Buffer.BlockCopy(prefix, 0, buffer, offset * sizeof(char), prefix.Length * sizeof(char));
+        char[] prefix = isForeground ? prefixForeground : prefixBackground;
+
+        //Buffer.BlockCopy(prefix, 0, buffer, offset * sizeof(char), prefix.Length * sizeof(char));
+        CopyWithSIMD(prefix, buffer, offset);
+
         int currentOffset = offset + prefix.Length;
 
         // Write RGB values
@@ -254,6 +291,46 @@ public class Win32Renderer
         buffer[currentOffset++] = 'm';
 
         return currentOffset - offset;
+    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int FormatColorSequence(char[] buffer, int offset, bool isForeground, byte r, byte g, byte b)
+    {
+        // Format: \x1b[38;2;R;G;Bm or \x1b[48;2;R;G;Bm
+        char[] prefix = isForeground ? prefixForeground : prefixBackground;
+
+        //Buffer.BlockCopy(prefix, 0, buffer, offset * sizeof(char), prefix.Length * sizeof(char));
+        CopyWithSIMD(prefix, buffer, offset);
+
+        int currentOffset = offset + prefix.Length;
+
+        // Write RGB values
+        currentOffset += WriteNumber(buffer, currentOffset, r);
+        buffer[currentOffset++] = ';';
+        currentOffset += WriteNumber(buffer, currentOffset, g);
+        buffer[currentOffset++] = ';';
+        currentOffset += WriteNumber(buffer, currentOffset, b);
+        buffer[currentOffset++] = 'm';
+
+        return currentOffset - offset;
+    }
+
+    private void CopyWithSIMD(char[] source, char[] destination, int destinationOffset)
+    {
+        int vectorSize = Vector<ushort>.Count; // SIMD can process multiple characters in parallel
+        int i = 0;
+
+        // Copy in chunks of `vectorSize` characters
+        for (; i <= source.Length - vectorSize; i += vectorSize)
+        {
+            var sourceVector = new Vector<char>(source, i);
+            sourceVector.CopyTo(destination, destinationOffset + i);
+        }
+
+        // Copy remaining elements
+        for (; i < source.Length; i++)
+        {
+            destination[destinationOffset + i] = source[i];
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

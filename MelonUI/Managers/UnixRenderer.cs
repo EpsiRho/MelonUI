@@ -110,6 +110,23 @@ public class UnixRenderer
                         writeOffset = 0;
                     }
 
+                    // Character is a raw pixel from OpenGL
+                    if (pixel.Character == '\xFFFF')
+                    {
+                        // Blank Foreground
+                        writeOffset += FormatColorSequence(writeBuffer, writeOffset, true, Color.Black);
+                        lastFg = 0x0;
+
+                        uint finalPixelColor = ((pixel.A & 0xFF) << 24) | ((pixel.R & 0xFF) << 16) | ((pixel.G & 0xFF) << 8) | (pixel.B & 0xFF);
+                        writeOffset += FormatColorSequence(writeBuffer, writeOffset, false, Color.FromArgb((int)finalPixelColor));
+
+                        lastBg = (int)finalPixelColor;
+
+                        writeBuffer[writeOffset++] = 0x20;
+
+                        continue;
+                    }
+
                     // Handle foreground color
                     if (pixel.ForegroundARGB != lastFg)
                     {

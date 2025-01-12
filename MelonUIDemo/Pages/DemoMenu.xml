@@ -3,7 +3,7 @@
 		 Name="DemoPage"
 		 Assemblies="MelonUI,MelonUIDemo"
 		 ShowBorder="false"
-		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUIDemo.Testing,MelonUIDemo.Backends"
+		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUI.Shaders,MelonUIDemo.Testing,MelonUIDemo.Backends"
 		 Backends="TestPageBackend,DemoWelcomeBackend">
 
 
@@ -52,10 +52,5 @@
 			   Width="35"
 			   Height="3"
 			   Y="13"/>
-
-		  <OpenGLRenderer 
-			  ShaderPath="C:\Users\jhset\Downloads\try3.txt"
-				Width="100%"
-				Height="100%"/>
 
 </MUIPage>

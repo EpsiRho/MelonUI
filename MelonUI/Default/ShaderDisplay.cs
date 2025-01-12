@@ -45,7 +45,7 @@ namespace MelonUI.Components
         public void UpdateShader(ShaderBase shader, params object[] args)
         {
             var sType = shader.GetType();
-            GraphicsDevice.GetDefault().For(textureWidth, textureHeight, shader);
+            //GraphicsDevice.GetDefault().For(textureWidth, textureHeight, shader);
             NeedsRecalculation = true;
         }
 

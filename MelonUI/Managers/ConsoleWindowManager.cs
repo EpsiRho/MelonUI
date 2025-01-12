@@ -1,4 +1,6 @@
-﻿using MelonUI.Base;
+﻿#define DEBUG
+
+using MelonUI.Base;
 using MelonUI.Default;
 using MelonUI.Enums;
 using SixLabors.ImageSharp.ColorSpaces;
@@ -32,6 +34,7 @@ namespace MelonUI.Managers
         public bool IsManaged { get { return IsRendererActive && IsControllerActive; } }
         public bool IsRendererActive;
         public bool IsControllerActive;
+        public bool IsDispatcherActive;
         public bool UsePlatformSpecificRenderer = true;
         public int HighestZ = 0;
         public Color TitleForeground { get; set; } = Color.White;
@@ -238,7 +241,6 @@ namespace MelonUI.Managers
 
             return nearest;
         }
-
 
         private void UpdateBufferSize()
         {
@@ -504,8 +506,8 @@ namespace MelonUI.Managers
                     RemoveElement(item);
                 }
                 var visibleElms = RootElements.Where(x => x.IsVisible).ToList();
-                //Parallel.ForEach(visibleElms, (element) => (Parallel ForEach was causing Memory Access Violation Exceptions, and perf gain was minimal so.)
-                foreach (var element in visibleElms)
+                Parallel.ForEach(visibleElms, (element) => //(Parallel ForEach was causing Memory Access Violation Exceptions, and perf gain was minimal so.)
+                //foreach (var element in visibleElms)
                 {
                     ConsoleBuffer elementBuffer = null;
 
@@ -552,7 +554,7 @@ namespace MelonUI.Managers
                     }
 
                     objectBuffers.Add((elementBuffer, element));
-                };
+                });
 
                 var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
                 foreach (var element in lst)
@@ -757,6 +759,22 @@ namespace MelonUI.Managers
             {
 
             }
+        }
+
+        public LockedList<Action> DispatcherQueue { get; set; } = new();
+        public void StartDispatcherQueue(CancellationToken cancellationToken)
+        {
+            IsDispatcherActive = true;
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                for(int i = 0; i < DispatcherQueue.Count; i++)
+                {
+                    DispatcherQueue[i]();
+                }
+
+                Thread.Sleep(16);
+            }
+            IsDispatcherActive = false;
         }
 
     }

@@ -1,4 +1,5 @@
-﻿using MelonUI.Attributes;
+﻿#define DEBUG
+using MelonUI.Attributes;
 using MelonUI.Enums;
 using MelonUI.Helpers;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
