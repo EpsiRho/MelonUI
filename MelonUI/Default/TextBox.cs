@@ -145,20 +145,23 @@ namespace MelonUI.Default
             // Calculate the scroll position
             UpdateScrollOffset(visibleWidth);
 
-            if (ShowBorder)
+            if (!string.IsNullOrEmpty(Label))
             {
-                var borderForeground = IsFocused ? FocusedBorderColor : BorderColor;
-                var borderBackground = IsFocused ? FocusedBackground : Background;
+                if (ShowBorder)
+                {
+                    var borderForeground = IsFocused ? FocusedBorderColor : BorderColor;
+                    var borderBackground = IsFocused ? FocusedBackground : Background;
 
-                buffer.WriteString(1, bump, Label.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), Foreground, Background);
-                bump++;
-                buffer.WriteString(0, bump, $"{"├".PadRight(buffer.Width - 1, BoxHorizontal).Substring(0, buffer.Width - 1)}┤", borderForeground, borderBackground);
-                bump++;
-            }
-            else
-            {
-                buffer.WriteString(1, bump, Label.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), Foreground, Background);
-                bump++;
+                    buffer.WriteString(1, bump, Label.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), Foreground, Background);
+                    bump++;
+                    buffer.WriteString(0, bump, $"{"├".PadRight(buffer.Width - 1, BoxHorizontal).Substring(0, buffer.Width - 1)}┤", borderForeground, borderBackground);
+                    bump++;
+                }
+                else
+                {
+                    buffer.WriteString(1, bump, Label.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), Foreground, Background);
+                    bump++;
+                }
             }
 
             // Draw text
