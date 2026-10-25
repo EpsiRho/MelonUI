@@ -32,6 +32,7 @@ namespace MelonUIDemo.Backends
         public static string MXMLPath { get; set; }
         public static MUIPage WatchedPage;
         public static FileSystemWatcher PageWatcher;
+        public static string ShaderSource { get; set; }
         public static Func<ConsoleKeyInfo, bool> CloseErrorDiagFunc { get; set; } = CloseErrorDialogCheck;
         public static bool CloseErrorDialogCheck(ConsoleKeyInfo key)
         {

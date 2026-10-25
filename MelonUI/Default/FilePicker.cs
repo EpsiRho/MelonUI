@@ -175,6 +175,7 @@ namespace MelonUI.Default
 
                 buffer.WriteString(1, i + 1, entryName.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), foreground, background);
             }
+
             NeedsRecalculation = false;
         }
 

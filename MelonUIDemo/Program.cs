@@ -11,14 +11,26 @@ using Pastel;
 using MelonUI.Helpers;
 using System.Threading;
 using MelonUI.Shaders;
+using System.Globalization;
+using System.Text;
+using System.IO;
 
 
 DemoWelcomeBackend.CWM = new ConsoleWindowManager();
 DemoWelcomeBackend.CWM.EnableTitleBar = true;
 DemoWelcomeBackend.CWM.SetTitle("[MelonUI V1.0b MXML Demo (1216122424)]");
+TextBlock tb = new TextBlock()
+{
+    Text = $"{(DemoWelcomeBackend.CWM.UsePlatformSpecificRenderer ? "Platform Specific" : "SysCon")}",
+    X = "70%",
+    Y = "0",
+    Width = "20%",
+    Height = "50%",
+};
 DemoWelcomeBackend.CWM.RegisterKeyboardControl(ConsoleKey.F1, () =>
 {
     DemoWelcomeBackend.CWM.UsePlatformSpecificRenderer = !DemoWelcomeBackend.CWM.UsePlatformSpecificRenderer;
+    //tb.Text = $"{(DemoWelcomeBackend.CWM.UsePlatformSpecificRenderer ? "Platform Specific" : "SysCon")}";
 }, "Toggle Renderer Type");
 
 DemoWelcomeBackend.CWM.FrameRendered += framems;
@@ -36,15 +48,6 @@ void framems(object? sender, EventArgs e)
     DemoWelcomeBackend.LastFrameTime = DateTime.Now;
 }
 
-TextBlock tb = new TextBlock()
-{
-    Text = "",
-    X = "25%",
-    Y = "25%",
-    Width = "50%",
-    Height = "50%",
-};
-
 //string wpxml = File.ReadAllText(@"C:\Users\jhset\Desktop\MelonUIogl\MelonUIDemo\Pages\DemoMenu.xml");
 
 string wpxml = @"
@@ -56,12 +59,6 @@ string wpxml = @"
 		 Namespaces=""MelonUI.Base,MelonUI.Default,MelonUI.Shaders,MelonUIDemo.Testing,MelonUIDemo.Backends""
 		 Backends=""TestPageBackend,DemoWelcomeBackend"">
 
-
-	<MusicPlayerElement
-			   Width=""30%""
-			   IsVisible=""false""
-		   Y=""50%""
-			   Height=""20%""/>
 	<FPSCounter XYAlignment=""TopRight""
 				Width=""9""
 				Height=""4""
@@ -81,6 +78,11 @@ string wpxml = @"
 		</OptionsMenu.Options>
 
 	</OptionsMenu>
+
+   <OpenGLShaderElement Width=""100%""
+						Height=""100%""
+						ShaderSource=""{DemoWelcomeBackend.ShaderSource}""
+						/>
 
 	<TextBlock Text=""{DemoWelcomeBackend.RenderTypeDisplay}""
 			   XYAlignment=""TopRight""
@@ -110,13 +112,13 @@ string wpxml = @"
 var WelcomePage = new MUIPage();
 var wpcompiled = WelcomePage.Compile(wpxml);
 
-var item = new OpenGLShaderElement()
-{
-    Width = "100%",
-    Height = "100%",
-};
+//var item = new OpenGLShaderElement()
+//{
+//    Width = "100%",
+//    Height = "100%",
+//};
 
-item.ShaderSource = @"
+DemoWelcomeBackend.ShaderSource = @"
 #version 330 core
 
 #ifdef GL_ES
@@ -503,9 +505,30 @@ void main(void)
 //--------------------------------------------------------------------------
 ";
 
-WelcomePage.AddElement(item);
+//WelcomePage.AddElement(item);
 //DemoWelcomeBackend.CWM.AddElement(item);
 
+FileSystemWatcher watcher = new FileSystemWatcher();
+watcher.Path = @"C:\Users\jhset\Desktop";
+watcher.NotifyFilter = NotifyFilters.LastWrite;
+
+watcher.Filter = "*.mxml";
+string currentStatus = "";
+watcher.Changed += (source, args) =>
+{
+	// read in the changed file
+	try
+	{
+		var text = File.ReadAllText(args.FullPath);
+		WelcomePage.Compile(text);
+	}
+	catch (Exception)
+	{
+		DemoWelcomeBackend.CWM.SetStatus("Error compiling MXML.");
+    }
+};
+
+watcher.EnableRaisingEvents = true;
 
 //foreach(var m in WelcomePage.CompilerMessages)
 //{
@@ -549,6 +572,7 @@ else
     DemoWelcomeBackend.CWM.AddElement(WelcomePage);
 
 }
+//DemoWelcomeBackend.CWM.AddElement(item);
 
 DemoWelcomeBackend.CWM.ManageConsole(DemoWelcomeBackend.CancelSource.Token);
 

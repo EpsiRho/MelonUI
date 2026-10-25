@@ -40,24 +40,30 @@ namespace MelonUI.Helpers
         }
         public static int GetVisibleLength(string text)
         {
-            int length = 0;
-            int i = 0;
-            while (i < text.Length)
+            if (string.IsNullOrEmpty(text)) return 0;
+
+            // Remove ANSI escape sequences (e.g., \x1b[...m)
+            var sb = new StringBuilder(text.Length);
+            for (int i = 0; i < text.Length; i++)
             {
                 if (text[i] == '\x1b')
                 {
+                    // Skip '\x1b[' and until a letter terminator (commonly 'm')
                     i++;
-                    while (i < text.Length && !char.IsLetter(text[i]))
+                    if (i < text.Length && text[i] == '[')
+                    {
                         i++;
-                    if (i < text.Length) i++;
+                        while (i < text.Length && !char.IsLetter(text[i])) i++;
+                        // skip the letter itself if present
+                        // the for loop will increment i further
+                    }
+                    continue;
                 }
-                else
-                {
-                    length++;
-                    i++;
-                }
+                sb.Append(text[i]);
             }
-            return length;
+
+            // Use ConsoleBuffer's Unicode-aware width calculation
+            return ConsoleBuffer.GetStringWidth(sb.ToString());
         }
         public static string GetGradientString(string input, Color[] colors)
         {

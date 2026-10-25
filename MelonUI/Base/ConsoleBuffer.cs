@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using Wcwidth;
+using System.Globalization;
 
 namespace MelonUI.Base
 {
@@ -104,11 +105,11 @@ namespace MelonUI.Base
             }
         }
 
-        public void SetPixel(int x, int y, char c, Color foreground, Color background)
+        public void SetPixel(int x, int y, char c, Color foreground, Color background, bool forceIsWide = false)
         {
             if (x >= 0 && x < Width && y >= 0 && y < Height)
             {
-                int charWidth = GetCharWidth(c);
+                int charWidth = forceIsWide ? 2 : GetCharWidth(c);
                 if (charWidth == 2 && x + 1 < Width)
                 {
                     // Set the wide character
@@ -125,17 +126,38 @@ namespace MelonUI.Base
 
         public static int GetCharWidth(char c)
         {
-            var wideTable = WideTable.GetTable(Unicode.Version_15_1_0);
-            return wideTable.Exist((uint)c) ? 2 : 1;
-            //return UnicodeCalculator.GetWidth(c);
+            // Best-effort for single char inputs. Handle surrogate halves as width1 fallback.
+            if (char.IsHighSurrogate(c) || char.IsLowSurrogate(c))
+                return 1;
+            var r = new Rune(c);
+            int w = UnicodeCalculator.GetWidth(r);
+            return w < 0 ? 1 : w;
+        }
+
+        public static int GetTextElementWidth(string element)
+        {
+            if (string.IsNullOrEmpty(element)) return 0;
+            var span = element.AsSpan();
+            var status = Rune.DecodeFromUtf16(span, out var first, out int consumed);
+            if (status == System.Buffers.OperationStatus.Done && consumed > 0)
+            {
+                int w = UnicodeCalculator.GetWidth(first);
+                return w < 0 ? 0 : w;
+            }
+            return 0;
         }
 
         public static int GetStringWidth(string str)
         {
+            if (string.IsNullOrEmpty(str)) return 0;
             int width = 0;
-            foreach (char c in str)
+            var indices = StringInfo.ParseCombiningCharacters(str);
+            for (int i = 0; i < indices.Length; i++)
             {
-                width += GetCharWidth(c);
+                int start = indices[i];
+                int length = (i + 1 < indices.Length) ? indices[i + 1] - start : str.Length - start;
+                string element = str.Substring(start, length);
+                width += GetTextElementWidth(element);
             }
             return width;
         }
@@ -145,19 +167,49 @@ namespace MelonUI.Base
             if (string.IsNullOrEmpty(text)) return;
 
             int currentX = x;
-            foreach (char c in text)
+            var indices = StringInfo.ParseCombiningCharacters(text);
+            for (int i = 0; i < indices.Length; i++)
             {
+                int start = indices[i];
+                int length = (i + 1 < indices.Length) ? indices[i + 1] - start : text.Length - start;
+                string element = text.Substring(start, length);
+
+                int charWidth = GetTextElementWidth(element);
                 if (currentX >= Width) break;
 
-                int charWidth = GetCharWidth(c);
-                if (currentX + charWidth <= Width)
+                if (charWidth == 2 && currentX + 1 < Width)
                 {
+                    // If the grapheme is a surrogate pair (two UTF-16 code units), store both units so WriteConsoleW will output a valid pair
+                    if (element.Length >= 2 && char.IsSurrogatePair(element[0], element[1]))
+                    {
+                        char high = element[0];
+                        char low = element[1];
+                        // write high surrogate as wide
+                        this[y, currentX] = new ConsolePixel(high, foreground, background, true);
+                        // write low surrogate in the next cell so UTF-16 pair is complete when writing
+                        if (currentX + 1 < Width)
+                        {
+                            this[y, currentX + 1] = new ConsolePixel(low, foreground, background, false);
+                        }
+                        currentX += 2;
+                    }
+                    else
+                    {
+                        // store first code unit (ConsolePixel stores single char) but mark as wide
+                        char c = element[0];
+                        SetPixel(currentX, y, c, foreground, background, forceIsWide: true);
+                        currentX += 2;
+                    }
+                }
+                else if (charWidth == 1)
+                {
+                    char c = element[0];
                     SetPixel(currentX, y, c, foreground, background);
-                    currentX += charWidth;
+                    currentX += 1;
                 }
                 else
                 {
-                    break; // Stop if we can't fit the next character
+                    // zero-width combining mark: attach visually to previous cell; do not advance
                 }
             }
         }

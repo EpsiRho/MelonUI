@@ -320,18 +320,18 @@ namespace MelonUI.Default
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
-            //if (showControls)
-            //{
-            //    RenderControlsView(buffer);
-            //}
-            //else if (PlaybackManager == null)
-            //{
-            //    RenderMissingFileView(buffer);
-            //}
-            //else
-            //{
-            //    RenderPlayerView(buffer);
-            //}
+            if (showControls)
+            {
+                RenderControlsView(buffer);
+            }
+            else if (PlaybackManager == null)
+            {
+                RenderMissingFileView(buffer);
+            }
+            else
+            {
+                RenderPlayerView(buffer);
+            }
         }
         private void RenderMissingFileView(ConsoleBuffer buffer)
         {
@@ -365,7 +365,7 @@ namespace MelonUI.Default
 
             // Playback Status and Volume (Next line)
             string playStatus = trackMetadata != null ? "Now Playing:" : $"Loading [{filename}]";
-            buffer.WriteString(ActualX, bumpY, playStatus, Foreground, Background);
+            buffer.WriteString(ActualX + bumpX, bumpY, playStatus, Foreground, Background);
 
             // Track Info Section
             string trackName = trackMetadata != null && !String.IsNullOrEmpty(trackMetadata.Title) ? $"╟{trackMetadata.Title}" : $"╟Loading...";

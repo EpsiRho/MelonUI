@@ -100,9 +100,9 @@ namespace MelonUI.Managers
                 {
                     ConsoleBuffer elementBuffer = null;
 
+                    element.CalculateLayout(0, bumpY, SCBuffer.Width, SCBuffer.Height - bumpY);
                     if (element.NeedsRecalculation)
                     {
-                        element.CalculateLayout(0, bumpY, SCBuffer.Width, SCBuffer.Height - bumpY);
                         elementBuffer = element.Render();
 
                         if (element.EnableCaching)
@@ -129,7 +129,7 @@ namespace MelonUI.Managers
 
                         if (!bufferFound)
                         {
-                            element.CalculateLayout(0, bumpY, SCBuffer.Width, SCBuffer.Height - bumpY);
+                            //element.CalculateLayout(0, bumpY, SCBuffer.Width, SCBuffer.Height - bumpY);
                             elementBuffer = element.Render();
 
                             if (element.EnableCaching)
@@ -468,52 +468,77 @@ namespace MelonUI.Managers
 
         public void Render()
         {
-            try
+            if (Win32Renderer.IsSupported && UsePlatformSpecificRenderer)
             {
-                if (Win32Renderer.IsSupported && UsePlatformSpecificRenderer)
+                var sz = Win32Renderer.GetConsoleWindowSize();
+                if (MainBuffer.Width != sz.width || MainBuffer.Height != sz.height)
                 {
-                    var sz = Win32Renderer.GetConsoleWindowSize();
-                    if (MainBuffer.Width != sz.width || MainBuffer.Height != sz.height)
+                    ResetSubChildrenRecalculation(RootElements);
+                }
+            }
+            else
+            {
+                if (MainBuffer.Width != Console.WindowWidth || MainBuffer.Height != Console.WindowHeight)
+                {
+                    ResetSubChildrenRecalculation(RootElements);
+                }
+            }
+            UpdateBufferSize();
+
+            // Draw title and status
+            int bumpY = 0;
+            if (EnableTitleBar)
+            {
+                bumpY = 2;
+                for (int i = 0; i < Title.Length && i < MainBuffer.Width; i++)
+                    MainBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
+                for (int i = 0; i < Status.Length && i < MainBuffer.Width; i++)
+                    MainBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
+            }
+
+            // Calculate layouts and render elements
+            var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();
+            var delElms = RootElements.Where(e => e.RenderThreadDeleteMe).ToArray();
+            foreach (var item in delElms)
+            {
+                RemoveElement(item);
+            }
+            var visibleElms = RootElements.Where(x => x.IsVisible).ToArray();
+            Parallel.ForEach(visibleElms, (element) => //(Parallel ForEach was causing Memory Access Violation Exceptions, and perf gain was minimal so.)
+            //foreach (var element in visibleElms)
+            {
+                ConsoleBuffer elementBuffer = null;
+
+                if (element.NeedsRecalculation)
+                {
+                    element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
+                    elementBuffer = element.Render();
+
+                    if (element.EnableCaching)
                     {
-                        ResetSubChildrenRecalculation(RootElements);
+                        lock (BufferCache)
+                        {
+                            BufferCache[element] = elementBuffer;
+                        }
                     }
                 }
                 else
                 {
-                    if (MainBuffer.Width != Console.WindowWidth || MainBuffer.Height != Console.WindowHeight)
+                    element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
+                    bool bufferFound = false;
+                    if (element.EnableCaching)
                     {
-                        ResetSubChildrenRecalculation(RootElements);
+                        lock (BufferCache)
+                        {
+                            if (BufferCache.TryGetValue(element, out elementBuffer))
+                            {
+                                bufferFound = true;
+                            }
+                        }
                     }
-                }
-                UpdateBufferSize();
 
-                // Draw title and status
-                int bumpY = 0;
-                if (EnableTitleBar)
-                {
-                    bumpY = 2;
-                    for (int i = 0; i < Title.Length && i < MainBuffer.Width; i++)
-                        MainBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
-                    for (int i = 0; i < Status.Length && i < MainBuffer.Width; i++)
-                        MainBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
-                }
-
-                // Calculate layouts and render elements
-                var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();
-                var delElms = RootElements.Where(e => e.RenderThreadDeleteMe);
-                foreach (var item in delElms)
-                {
-                    RemoveElement(item);
-                }
-                var visibleElms = RootElements.Where(x => x.IsVisible).ToList();
-                Parallel.ForEach(visibleElms, (element) => //(Parallel ForEach was causing Memory Access Violation Exceptions, and perf gain was minimal so.)
-                //foreach (var element in visibleElms)
-                {
-                    ConsoleBuffer elementBuffer = null;
-
-                    if (element.NeedsRecalculation)
+                    if (!bufferFound)
                     {
-                        element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
                         elementBuffer = element.Render();
 
                         if (element.EnableCaching)
@@ -524,63 +549,28 @@ namespace MelonUI.Managers
                             }
                         }
                     }
-                    else
-                    {
-                        element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
-                        bool bufferFound = false;
-                        if (element.EnableCaching)
-                        {
-                            lock (BufferCache)
-                            {
-                                if (BufferCache.TryGetValue(element, out elementBuffer))
-                                {
-                                    bufferFound = true;
-                                }
-                            }
-                        }
+                }
 
-                        if (!bufferFound)
-                        {
-                            elementBuffer = element.Render();
+                objectBuffers.Add((elementBuffer, element));
+            });
 
-                            if (element.EnableCaching)
-                            {
-                                lock (BufferCache)
-                                {
-                                    BufferCache[element] = elementBuffer;
-                                }
-                            }
-                        }
-                    }
-
-                    objectBuffers.Add((elementBuffer, element));
-                });
-
-                var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
-                foreach (var element in lst)
-                {
-                    MainBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
-                };
-
-
-                // Render the main buffer to console
-                MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
-                FrameRendered?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception e)
+            var lst = objectBuffers.OrderBy(e => e.element.Z).ToArray();
+            foreach (var element in lst)
             {
-                Debug.WriteLine(e.Message);
-                MainBuffer.WriteStringWrapped(0,0,e.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
-                MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
-                FrameRendered?.Invoke(this, EventArgs.Empty);
-            }
+                MainBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
+            };
+
+
+            // Render the main buffer to console
+            MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
+            FrameRendered?.Invoke(this, EventArgs.Empty);
         }
 
         public void MoveFocus(UIElement elm)
         {
             if (elm != null)
             {
-                var elms = GetAllFocusableChildren(RootElements).OrderBy(x => x.Z).ToList();
+                var elms = GetAllFocusableChildren(RootElements).OrderBy(x => x.Z).ToArray();
                 int count = 0;
 
                 var focusedItem = GetSubChildByGuid(elm.UID, RootElements);

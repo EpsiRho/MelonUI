@@ -1700,12 +1700,12 @@ namespace MelonUI.Base
             {
                 // Calculate layouts and render elements
                 var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();
-                var delElms = Children.Where(e => e.RenderThreadDeleteMe);
+                var delElms = Children.Where(e => e.RenderThreadDeleteMe).ToArray();
                 foreach (var item in delElms)
                 {
                     RemoveElement(item);
                 }
-                var visibleElms = Children.Where(x => x.IsVisible).ToList();
+                var visibleElms = Children.Where(x => x.IsVisible).ToArray();
                 foreach (var element in visibleElms)
                 {
                     ConsoleBuffer elementBuffer = null;

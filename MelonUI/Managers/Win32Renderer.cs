@@ -9,6 +9,7 @@ using MelonUI.Managers;
 using Microsoft.Win32.SafeHandles;
 using System.Text;
 using System.Numerics;
+using System.IO;
 
 public class Win32Renderer
 {
@@ -16,6 +17,7 @@ public class Win32Renderer
     private const uint ENABLE_PROCESSED_OUTPUT = 0x0001;
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
     private const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
+    private const uint CP_UTF8 =65001;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GetStdHandle(int nStdHandle);
@@ -39,8 +41,28 @@ public class Win32Renderer
         IntPtr hConsoleOutput,
         out CONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetConsoleOutputCP(uint wCodePageID);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetConsoleCP(uint wCodePageID);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint GetConsoleOutputCP();
+
     private readonly IntPtr consoleHandle;
     private readonly bool vtProcessingEnabled;
+    public bool VTProcessingEnabled => vtProcessingEnabled;
+
+    public uint CurrentConsoleMode
+    {
+        get
+        {
+            if (consoleHandle == IntPtr.Zero) return 0;
+            GetConsoleMode(consoleHandle, out uint mode);
+            return mode;
+        }
+    }
     private char[] writeBuffer;
 
     // Conservative estimate of max chars needed per pixel
@@ -52,6 +74,10 @@ public class Win32Renderer
 
     public static bool IsSupported = OperatingSystem.IsWindows();
 
+    // Diagnostics toggle
+    public static bool EnableWriteDiagnostics = false;
+    private static int diagnosticsWritesRemaining =5; // limit writes
+
     public Win32Renderer(int width, int height)
     {
         consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
@@ -62,6 +88,15 @@ public class Win32Renderer
             mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN | ENABLE_PROCESSED_OUTPUT;
             vtProcessingEnabled = SetConsoleMode(consoleHandle, mode);
         }
+
+        // Ensure the console output code page is set to UTF-8 so that
+        // UTF-16 output and VT sequences are interpreted correctly.
+        try
+        {
+            SetConsoleOutputCP(CP_UTF8);
+            SetConsoleCP(CP_UTF8);
+        }
+        catch { }
 
         SetSize(width, height);
     }
@@ -242,10 +277,37 @@ public class Win32Renderer
                     }
                     else
                     {
-                        writeBuffer[writeOffset++] = pixel.Character;
+                        // Handle possible surrogate pair: if current is high surrogate and next pixel contains low surrogate, write both code units together
+                        bool consumedNextForSurrogate = false;
+                        if (char.IsHighSurrogate(pixel.Character) && bufferIndex < buffer.Length)
+                        {
+                            char nextCh = buffer[bufferIndex].Character;
+                            if (char.IsLowSurrogate(nextCh))
+                            {
+                                // write both code units
+                                writeBuffer[writeOffset++] = pixel.Character;
+                                writeBuffer[writeOffset++] = nextCh;
+                                // consume next pixel
+                                bufferIndex++;
+                                consumedNextForSurrogate = true;
+                                // advance x because we consumed the next cell
+                                x++;
+                            }
+                        }
+
+                        if (!consumedNextForSurrogate)
+                        {
+                            writeBuffer[writeOffset++] = pixel.Character;
+                        }
                     }
 
-                    if (pixel.IsWide) x++;
+                    // Only advance for wide if we did not already consume the next cell as low surrogate
+                    if (pixel.IsWide && !char.IsHighSurrogate(pixel.Character))
+                    {
+                        // Skip the reserved filler cell in the buffer as well so indices remain aligned
+                        x++;
+                        bufferIndex++;
+                    }
                 }
 
                 // Write newline - direct assignment
@@ -260,6 +322,28 @@ public class Win32Renderer
             // Final write if we have content
             if (writeOffset > 0)
             {
+                // If diagnostics enabled, dump the exact char sequence that will be written
+                if (EnableWriteDiagnostics && diagnosticsWritesRemaining >0)
+                {
+                    try
+                    {
+                        string s = new string(writeBuffer,0, writeOffset);
+                        // create readable escape for non-printables
+                        var sb = new StringBuilder();
+                        foreach (char c in s)
+                        {
+                            if (c == '\x1b') sb.Append("\\x1b");
+                            else if (char.IsControl(c) && c != '\r' && c != '\n' && c != '\t') sb.AppendFormat("\\u{0:X4}", (int)c);
+                            else sb.Append(c);
+                        }
+
+                        string path = Path.Combine(Directory.GetCurrentDirectory(), $"win32_writebuf_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
+                        File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+                    }
+                    catch { }
+                    diagnosticsWritesRemaining--;
+                }
+
                 WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero);
             }
         }
@@ -355,5 +439,72 @@ public class Win32Renderer
             buffer[offset] = (char)('0' + value);
             return 1;
         }
+    }
+
+    // Diagnostic helper: build readable representation of the sequence for given buffer
+    public string BuildDebugSequence(ConsolePixel[] buffer, int bufWidth, int bufHeight, int dumpRow = -1, int maxRows =8)
+    {
+        var sb = new StringBuilder();
+        try
+        {
+            int bufferIndex =0;
+            int rows = Math.Min(bufHeight, maxRows);
+            for (int y =0; y < bufHeight; y++)
+            {
+                if (dumpRow >=0 && y < dumpRow) { bufferIndex += bufWidth; continue; }
+                if (dumpRow >=0 && y > dumpRow + rows -1) break;
+
+                sb.AppendLine($"--- ROW {y} ---");
+                int x =0;
+                while (x < bufWidth)
+                {
+                    ref ConsolePixel pixel = ref buffer[bufferIndex + x];
+                    // Color tokens
+                    if (pixel.Foreground.A !=0)
+                    {
+                        sb.AppendFormat("[FG=#{0:X2}{1:X2}{2:X2}]", pixel.Foreground.R, pixel.Foreground.G, pixel.Foreground.B);
+                    }
+                    if (pixel.Background.A !=0)
+                    {
+                        sb.AppendFormat("[BG=#{0:X2}{1:X2}{2:X2}]", pixel.Background.R, pixel.Background.G, pixel.Background.B);
+                    }
+
+                    // Character(s)
+                    char ch = pixel.Character;
+                    if (ch == '\0')
+                    {
+                        sb.Append("[SP]");
+                    }
+                    else
+                    {
+                        // If high surrogate and next contains low surrogate, include both
+                        if (char.IsHighSurrogate(ch) && (x +1) < bufWidth)
+                        {
+                            char low = buffer[bufferIndex + x + 1].Character;
+                            if (char.IsLowSurrogate(low))
+                            {
+                                int codePoint = char.ConvertToUtf32(ch, low);
+                                sb.AppendFormat("U+{0:X6}('{1}{2}')", codePoint, ch, low);
+                                sb.Append(pixel.IsWide ? "(W)" : "");
+                                x +=2;
+                                continue;
+                            }
+                        }
+
+                        sb.AppendFormat("U+{0:X4}('{1}')", (int)ch, ch);
+                        sb.Append(pixel.IsWide ? "(W)" : "");
+                    }
+
+                    x++;
+                }
+                sb.AppendLine();
+                bufferIndex += bufWidth;
+            }
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine("BuildDebugSequence error: " + ex.Message);
+        }
+        return sb.ToString();
     }
 }
