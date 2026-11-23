@@ -1,12 +1,7 @@
 {
   "profiles": {
-    "MelonUIDemo": {
-      "commandName": "Project",
-      "commandLineArgs": "--mxml"
-    },
-    "WSL": {
-      "commandName": "WSL2",
-      "distributionName": "Debian"
-    }
+    "C#": { "commandName": "Project" },
+    "MXML": { "commandName": "Project", "commandLineArgs": "--mxml" },
+    "Shader": { "commandName": "Project", "commandLineArgs": "--shader" }
   }
 }

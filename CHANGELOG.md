@@ -2,13 +2,15 @@
 
 ## 1.0.0
 
-- Live MXML demo creates an editable file, opens Notepad on Windows and recompiles saved changes,
-  with persistent diagnostics and preservation of the last working preview on errors.
-- Transactional MXML compiler with nested ownership, deterministic declarations, relative/cycle-safe
-  includes, scoped names, public typed bindings/events, ordered actions and structured diagnostics.
-- Binding analyzer packaging, qualified/alias/multiple-field/nested/generic support and diagnostics.
-- Single-owner async window lifecycle, Post/InvokeAsync, managed children, reusable detach and final disposal.
-- Tab/spatial/modal focus, hardened default controls, RGB editing and redacted secret capture.
-- Idle output suppression, notification-driven invalidation, corrected layout/Unicode/alpha composition.
-- Optional shader package, pure graphics construction, explicit OpenGL initialization and native cleanup.
-- Removed image/audio prototypes; added MIT license, notices, local package consumer checks and CI.
+The first real release. Most of MelonUI got rewritten for this one.
+
+- MXML: pages can be written in markup now, with bindings, events, includes, and errors that tell
+  you the line and column. A failed reload keeps the last page that worked.
+- Bindings: the `[Binding]` generator ships in the package, so custom controls just work.
+- Windows: one owner per window, `Post`/`InvokeAsync` for touching the UI from other threads, and
+  proper cleanup when things close.
+- Focus: Tab, arrow key, and popup focus all work the way you'd expect.
+- Controls: fixed up the default controls, added RGB editing, and passwords are hidden in captures.
+- Rendering: only redraws when something changed, and Unicode, layout, and transparency are fixed.
+- Shaders: moved into their own optional package, MelonUI.Shaders.
+- Removed the old image and audio experiments.

@@ -1,3 +1,4 @@
+<!-- Bound to SettingsModel as "App". Try changing things and pressing F5. -->
 <MUIPage MxmlVersion="1" ShowBorder="false">
   <TextBox Name="Name" Label="Display name" Text="{App.Name}" Width="42" Height="5"/>
   <Button Text="Save changes" OnPressed="{App.Save}" Y="5" Width="42" Height="3">

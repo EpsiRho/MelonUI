@@ -1,8 +1,0 @@
-<MUIPage MxmlVersion="1" Width="99%" Height="90%" Name="DemoPage" Assemblies="MelonUI,MelonUI.Shaders,MelonUIDemo"
-         ShowBorder="false" Namespaces="MelonUI.Shaders,MelonUIDemo.Backends" Backends="DemoWelcomeBackend">
-  <OpenGLShaderElement Name="ShaderScene" Width="100%" Height="100%" ShaderSource="{DemoWelcomeBackend.ShaderSource}"/>
-  <FPSCounter XYAlignment="TopRight" Width="9" Height="4"/>
-  <OptionsMenu Name="MUIDemoMenu" IsVisible="true" Width="50%" Height="40%">
-    <OptionsMenu.Options><MenuItem Option="Show shader"><MenuItem.OnSelect MXMLFlags="Show(ShaderScene:false)"/></MenuItem></OptionsMenu.Options>
-  </OptionsMenu>
-</MUIPage>

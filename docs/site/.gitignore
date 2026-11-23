@@ -4,3 +4,4 @@ examples/obj/
 *.log
 artifacts/
 .sites-local/
+dist/

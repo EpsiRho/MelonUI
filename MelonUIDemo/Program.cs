@@ -1,6 +1,11 @@
 using MelonUIDemo;
 
-if (args.Contains("--markup") || args.Contains("--mxml")) await MxmlControlsDemo.RunAsync(args.Contains("--smoke"));
-else if (args.Contains("--controls")) await ControlsDemo.RunAsync(args.Contains("--smoke"));
-else if (args.Contains("--shader")) await MxmlShaderDemo.RunAsync(args.Contains("--smoke"));
-else await CSharpDemo.RunAsync(args.Contains("--smoke"));
+// dotnet run --project MelonUIDemo             the page built in C#
+// dotnet run --project MelonUIDemo -- --mxml   the same kind of page, written in MXML
+// dotnet run --project MelonUIDemo -- --shader an OpenGL shader drawn in the terminal
+switch (args.FirstOrDefault())
+{
+    case "--mxml": await MxmlDemo.RunAsync(); break;
+    case "--shader": await ShaderDemo.RunAsync(); break;
+    default: await CSharpDemo.RunAsync(); break;
+}

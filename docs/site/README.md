@@ -56,6 +56,5 @@ To host the site yourself, serve the contents of `dist/`. Each page has its own 
 relative links, including from a subfolder. No application server or SPA fallback is needed.
 The output includes `.nojekyll` for GitHub Pages.
 
-The site is kept local. These scripts do not upload or deploy anything. The unused
-`.openai/hosting.json` file only records the previously provisioned, unpublished private project.
-The library and these docs use MIT; see LICENSE and the repository dependency notices.
+The Docs workflow builds the site and publishes it to GitHub Pages whenever `docs/site` or the
+library changes. `dist/` isn't committed.
