@@ -11,7 +11,7 @@ using System.Text;
 using System.Numerics;
 using System.IO;
 
-public class Win32Renderer
+public class Win32Renderer : IDisposable
 {
     private const int STD_OUTPUT_HANDLE = -11;
     private const uint ENABLE_PROCESSED_OUTPUT = 0x0001;
@@ -49,8 +49,14 @@ public class Win32Renderer
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint GetConsoleOutputCP();
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint GetConsoleCP();
 
     private readonly IntPtr consoleHandle;
+    private readonly uint? _originalMode;
+    private readonly uint _originalInputCodePage;
+    private readonly uint _originalOutputCodePage;
+    private bool _disposed;
     private readonly bool vtProcessingEnabled;
     public bool VTProcessingEnabled => vtProcessingEnabled;
 
@@ -63,7 +69,7 @@ public class Win32Renderer
             return mode;
         }
     }
-    private char[] writeBuffer;
+    private char[] writeBuffer = [];
 
     // Conservative estimate of max chars needed per pixel
     private const int CHARS_PER_PIXEL = 50; // Color sequences + char + safety margin
@@ -81,10 +87,13 @@ public class Win32Renderer
     public Win32Renderer(int width, int height)
     {
         consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+        _originalInputCodePage = GetConsoleCP();
+        _originalOutputCodePage = GetConsoleOutputCP();
 
         // Check if we can enable VT processing
         if (GetConsoleMode(consoleHandle, out uint mode))
         {
+            _originalMode = mode;
             mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN | ENABLE_PROCESSED_OUTPUT;
             vtProcessingEnabled = SetConsoleMode(consoleHandle, mode);
         }
@@ -99,6 +108,16 @@ public class Win32Renderer
         catch { }
 
         SetSize(width, height);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_originalMode.HasValue) SetConsoleMode(consoleHandle, _originalMode.Value);
+        if (_originalInputCodePage != 0) SetConsoleCP(_originalInputCodePage);
+        if (_originalOutputCodePage != 0) SetConsoleOutputCP(_originalOutputCodePage);
+        GC.SuppressFinalize(this);
     }
 
     public void SetSize(int width, int height)
@@ -207,14 +226,13 @@ public class Win32Renderer
             int lastBg = default;
             int bufferIndex = 0;
             int widthMinusOne = Width - 1;
-            int heightMinusOne = Height - 1;
 
             // Preallocate common sequences
             char[] resetFg = new[] { '\x1b', '[', '3', '9', 'm' };
             char[] resetBg = new[] { '\x1b', '[', '4', '9', 'm' };
             char[] resetSequence = new[] { '\x1b', '[', '0', 'm' };
 
-            for (int y = 0; y < heightMinusOne; y++)
+            for (int y = 0; y < Height; y++)
             {
                 for (int x = 0; x < Width; x++)
                 {
@@ -279,7 +297,7 @@ public class Win32Renderer
                     {
                         // Handle possible surrogate pair: if current is high surrogate and next pixel contains low surrogate, write both code units together
                         bool consumedNextForSurrogate = false;
-                        if (char.IsHighSurrogate(pixel.Character) && bufferIndex < buffer.Length)
+                        if (char.IsHighSurrogate(pixel.Character) && x + 1 < Width && bufferIndex < buffer.Length)
                         {
                             char nextCh = buffer[bufferIndex].Character;
                             if (char.IsLowSurrogate(nextCh))
@@ -302,7 +320,7 @@ public class Win32Renderer
                     }
 
                     // Only advance for wide if we did not already consume the next cell as low surrogate
-                    if (pixel.IsWide && !char.IsHighSurrogate(pixel.Character))
+                    if (pixel.IsWide && !char.IsHighSurrogate(pixel.Character) && x + 1 < Width)
                     {
                         // Skip the reserved filler cell in the buffer as well so indices remain aligned
                         x++;
@@ -310,9 +328,12 @@ public class Win32Renderer
                     }
                 }
 
-                // Write newline - direct assignment
-                writeBuffer[writeOffset++] = '\r';
-                writeBuffer[writeOffset++] = '\n';
+                // Do not advance past the bottom row and scroll the viewport.
+                if (y < Height - 1)
+                {
+                    writeBuffer[writeOffset++] = '\r';
+                    writeBuffer[writeOffset++] = '\n';
+                }
             }
 
             // Reset colors at end
@@ -344,12 +365,14 @@ public class Win32Renderer
                     diagnosticsWritesRemaining--;
                 }
 
-                WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero);
+                if (!WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero))
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Render error: {ex}");
+            throw;
         }
     }
 

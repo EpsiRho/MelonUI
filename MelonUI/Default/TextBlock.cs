@@ -1,369 +1,156 @@
-﻿using MelonUI.Attributes;
+using System.Drawing;
+using System.Globalization;
+using System.Text.RegularExpressions;
+using MelonUI.Attributes;
 using MelonUI.Base;
 using MelonUI.Enums;
-using MelonUI.Helpers;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Text;
-using System.Text.RegularExpressions;
 
-namespace MelonUI.Default
+namespace MelonUI.Default;
+
+public partial class TextBlock : UIElement
 {
-    public partial class TextBlock : UIElement
+    [Binding] private string text = "";
+    [Binding] private Alignment textAlignment;
+    [Binding] private bool sizeBasedOnText;
+    private sealed record Glyph(string Text, int Width, Color Foreground, Color Background);
+    private static readonly Regex Tokens = new(@"\x1b\[[0-9;]*m|\[Color\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)\]|\[ColorReset\]", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+    public TextBlock() { ConsiderForFocus = false; }
+    public override void CalculateLayout(int x, int y, int width, int height)
     {
-        [Binding]
-        private string text;
-
-        [Binding]
-        private Alignment textAlignment = Alignment.TopLeft;
-
-        [Binding]
-        private bool sizeBasedOnText = false;
-
-        protected override void RenderContent(ConsoleBuffer buffer)
+        base.CalculateLayout(x, y, width, height);
+        if (!SizeBasedOnText) return;
+        int edge = ShowBorder ? 2 : 0;
+        var lines = BuildLines(Math.Max(1, ActualMaxWidth - edge));
+        int oldWidth = ActualWidth, oldHeight = ActualHeight;
+        ActualWidth = Math.Clamp((lines.Count == 0 ? 0 : lines.Max(line => line.Sum(g => g.Width))) + edge, ActualMinWidth, ActualMaxWidth);
+        ActualHeight = Math.Clamp(lines.Count + edge, ActualMinHeight, ActualMaxHeight);
+        if (XYAlignment is Alignment.TopRight or Alignment.CenterRight or Alignment.BottomRight) ActualX += oldWidth - ActualWidth;
+        else if (XYAlignment is Alignment.TopCenter or Alignment.Centered or Alignment.BottomCenter) ActualX += (oldWidth - ActualWidth) / 2;
+        if (XYAlignment is Alignment.BottomLeft or Alignment.BottomCenter or Alignment.BottomRight) ActualY += oldHeight - ActualHeight;
+        else if (XYAlignment is Alignment.CenterLeft or Alignment.Centered or Alignment.CenterRight) ActualY += (oldHeight - ActualHeight) / 2;
+        LayoutChildren();
+    }
+    protected override void RenderContent(ConsoleBuffer buffer)
+    {
+        var a = ContentRect;
+        if (a.Width == 0 || a.Height == 0) return;
+        var lines = BuildLines(a.Width);
+        int vertical = TextAlignment is Alignment.BottomLeft or Alignment.BottomCenter or Alignment.BottomRight ? Math.Max(0, a.Height - lines.Count) :
+            TextAlignment is Alignment.CenterLeft or Alignment.Centered or Alignment.CenterRight ? Math.Max(0, (a.Height - lines.Count) / 2) : 0;
+        for (int i = 0; i < lines.Count && i + vertical < a.Height; i++)
         {
-            Color defaultFg = IsFocused ? FocusedForeground : Foreground;
-            Color defaultBg = IsFocused ? FocusedBackground : Background;
-
-            // Internal area shrinks if we have borders:
-            int maxWidth = ActualWidth - (ShowBorder ? 2 : 0);
-            int maxHeight = ActualHeight - (ShowBorder ? 2 : 0);
-
-            // Step 1: Convert [Color(r,g,b)] + [ColorReset] => ANSI codes
-            string processedText = ConvertMarkersToAnsi(Text);
-
-            // Step 2: Wrap text, using an approach that never breaks in the middle of words
-            List<string> wrappedLines = ContainsAnsiCodes(processedText)
-                ? WrapAnsiText(processedText, maxWidth)
-                : WrapPlainText(processedText, maxWidth);
-
-            // The total line count
-            int contentHeight = wrappedLines.Count;
-
-            // Compute vertical alignment offset
-            int startY = CalculateStartY(contentHeight, maxHeight);
-
-            // Render each line
-            for (int i = 0; i < wrappedLines.Count && (i + startY) < (maxHeight + (ShowBorder ? 1 : 0)); i++)
+            int lineWidth = lines[i].Sum(g => g.Width);
+            int horizontal = TextAlignment is Alignment.TopRight or Alignment.CenterRight or Alignment.BottomRight ? a.Width - lineWidth :
+                TextAlignment is Alignment.TopCenter or Alignment.Centered or Alignment.BottomCenter ? (a.Width - lineWidth) / 2 : 0;
+            int x = a.X + Math.Max(0, horizontal);
+            foreach (var glyph in lines[i])
             {
-                string line = wrappedLines[i];
-
-                // For alignment, measure visible width ignoring ANSI
-                int lineWidth = ParamParser.GetVisibleLength(line);
-
-                // Compute horizontal alignment offset
-                int startX = CalculateStartX(lineWidth, maxWidth);
-
-                // Render at (startX, startY + i)
-                RenderColoredLine(buffer, startX, startY + i, line, defaultFg, defaultBg);
+                if (x + glyph.Width > a.X + a.Width) break;
+                buffer.WriteString(x, a.Y + i + vertical, glyph.Text, glyph.Foreground, glyph.Background);
+                x += glyph.Width;
             }
         }
-
-        // Replace [Color(r,g,b)] => ESC[38;2;r;g;bm, and [ColorReset] => ESC[0m
-        private string ConvertMarkersToAnsi(string input)
+    }
+    private List<List<Glyph>> BuildLines(int width)
+    {
+        var lines = new List<List<Glyph>> { new() };
+        if (width <= 0) return lines;
+        var fg = IsFocused ? FocusedForeground : Foreground;
+        var bg = IsFocused ? FocusedBackground : Background;
+        var initialFg = fg; var initialBg = bg;
+        bool bold = false;
+        string value = (Text ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
+        int cursor = 0, used = 0;
+        void Append(string plain)
         {
-            if (string.IsNullOrEmpty(input))
-                return string.Empty;
-
-            // Replace [ColorReset] => ESC[0m
-            input = input.Replace(@"[ColorReset]", "\x1b[0m");
-
-            // Parse each [Color(r,g,b)] block
-            var colorRanges = ParseColors(input);
-            if (colorRanges.Count == 0)
-                return input;
-
-            var sb = new StringBuilder();
-            int currentIndex = 0;
-
-            foreach (var (color, startIndex, endIndex) in colorRanges)
+            var parts = StringInfo.GetTextElementEnumerator(plain);
+            while (parts.MoveNext())
             {
-                // Copy everything prior to marker
-                if (startIndex > currentIndex)
-                    sb.Append(input, currentIndex, startIndex - currentIndex);
-
-                // Insert ANSI color code
-                sb.Append($"\x1b[38;2;{color.R};{color.G};{color.B}m");
-
-                // Advance index
-                currentIndex = endIndex + 1;
-            }
-            // Append trailing text
-            if (currentIndex < input.Length)
-                sb.Append(input, currentIndex, input.Length - currentIndex);
-
-            return sb.ToString();
-        }
-
-        // Finds [Color(r,g,b)] markers and returns the color & [start..end] coverage.
-        public static List<(Color color, int startIndex, int endIndex)> ParseColors(string input)
-        {
-            const string markerStart = "[Color(";
-            const string markerEnd = ")]";
-
-            var results = new List<(Color, int, int)>();
-            int idx = 0;
-            while (idx < input.Length)
-            {
-                int startIndex = input.IndexOf(markerStart, idx);
-                if (startIndex < 0) break;
-                int endIndex = input.IndexOf(markerEnd, startIndex);
-                if (endIndex < 0) break;
-
-                int innerStart = startIndex + markerStart.Length;
-                int innerLen = endIndex - innerStart;
-                string inside = input.Substring(innerStart, innerLen);
-
-                var parts = inside.Split(',');
-                if (parts.Length == 3)
+                string part = parts.GetTextElement();
+                if (part == "\n") { lines.Add(new()); used = 0; continue; }
+                if (part.Any(char.IsControl)) part = " ";
+                int size = Math.Max(1, ConsoleBuffer.GetStringWidth(part));
+                if (size > width) { part = "?"; size = 1; }
+                if (used + size > width)
                 {
-                    try
+                    int space = lines[^1].FindLastIndex(g => g.Text == " ");
+                    if (space > 0)
                     {
-                        int r = int.Parse(parts[0].Trim());
-                        int g = int.Parse(parts[1].Trim());
-                        int b = int.Parse(parts[2].Trim());
-                        var color = Color.FromArgb(r, g, b);
-
-                        // The entire marker is "[Color(r,g,b)]"
-                        int markerFullEnd = endIndex + markerEnd.Length - 1;
-                        results.Add((color, startIndex, markerFullEnd));
+                        var carry = lines[^1].Skip(space + 1).ToList();
+                        lines[^1].RemoveRange(space, lines[^1].Count - space);
+                        lines.Add(carry); used = carry.Sum(g => g.Width);
                     }
-                    catch
-                    {
-                        // ignore parse errors
-                    }
+                    else { lines.Add(new()); used = 0; }
                 }
-                idx = endIndex + markerEnd.Length;
+                var drawFg = bold ? Color.FromArgb(fg.A, Math.Max(fg.R, (byte)128), Math.Max(fg.G, (byte)128), Math.Max(fg.B, (byte)128)) : fg;
+                lines[^1].Add(new Glyph(part, size, drawFg, bg)); used += size;
             }
-            return results;
         }
-
-        // Check for any ANSI ESC + '[' + ??? + 'm' codes
-        public static bool ContainsAnsiCodes(string input)
+        foreach (Match token in Tokens.Matches(value))
         {
-            if (string.IsNullOrEmpty(input))
-                return false;
-
-            for (int i = 0; i < input.Length - 1; i++)
+            Append(value[cursor..token.Index]);
+            if (token.Value == "[ColorReset]") { fg = initialFg; bg = initialBg; bold = false; }
+            else if (token.Value.StartsWith("[Color("))
             {
-                if (input[i] == '\x1b' && i + 1 < input.Length && input[i + 1] == '[')
-                {
-                    int j = i + 2;
-                    while (j < input.Length && (char.IsDigit(input[j]) || input[j] == ';'))
-                        j++;
-                    if (j < input.Length && input[j] == 'm')
-                        return true;
-                }
+                var colors = ParseColors(token.Value);
+                if (colors.Count > 0) fg = colors[0].color; else Append(token.Value);
             }
-            return false;
-        }
-
-        private List<string> WrapPlainText(string text, int maxWidth)
-        {
-            var lines = new List<string>();
-            if (string.IsNullOrEmpty(text) || maxWidth <= 0)
-                return lines;
-
-            // Break on actual newlines first
-            string[] paragraphs = text.Split('\n');
-            foreach (string paragraph in paragraphs)
+            else
             {
-                // Split the paragraph into words
-                string[] words = paragraph.Split(' ');
-                var sb = new StringBuilder();
-                foreach (var word in words)
+                var codes = token.Value[2..^1].Split(';').Select(s => int.TryParse(s, out int code) ? code : -1).ToArray();
+                for (int i = 0; i < codes.Length; i++)
                 {
-                    if (word.Length == 0)
+                    if (codes[i] is 0 or -1) { fg = initialFg; bg = initialBg; bold = false; }
+                    else if (codes[i] == 1) bold = true;
+                    else if (codes[i] == 22) bold = false;
+                    else if (codes[i] == 39) fg = initialFg;
+                    else if (codes[i] == 49) bg = initialBg;
+                    else if (codes[i] is 38 or 48 && i + 4 < codes.Length && codes[i + 1] == 2 && codes.Skip(i + 2).Take(3).All(c => c is >= 0 and <= 255))
                     {
-                        // skip empty
-                        continue;
+                        var color = Color.FromArgb(codes[i + 2], codes[i + 3], codes[i + 4]);
+                        if (codes[i] == 38) fg = color; else bg = color;
+                        i += 4;
                     }
-
-                    // If adding this word (plus a space if needed) exceeds maxWidth, we start a new line
-                    if (sb.Length > 0 && (sb.Length + 1 + word.Length) > maxWidth)
+                    else if (codes[i] is 38 or 48 && i + 2 < codes.Length && codes[i + 1] == 5 && codes[i + 2] is >= 0 and <= 255)
                     {
-                        lines.Add(sb.ToString());
-                        sb.Clear();
+                        var color = IndexedColor(codes[i + 2]);
+                        if (codes[i] == 38) fg = color; else bg = color;
+                        i += 2;
                     }
-
-                    // Append a space if it's not the first word in the line
-                    if (sb.Length > 0) sb.Append(' ');
-                    sb.Append(word);
-                }
-
-                // Add whatever is left in the line buffer
-                if (sb.Length > 0)
-                {
-                    lines.Add(sb.ToString());
+                    else if (codes[i] is >= 30 and <= 37) fg = BasicColors[codes[i] - 30];
+                    else if (codes[i] is >= 40 and <= 47) bg = BasicColors[codes[i] - 40];
+                    else if (codes[i] is >= 90 and <= 97) fg = BrightColors[codes[i] - 90];
+                    else if (codes[i] is >= 100 and <= 107) bg = BrightColors[codes[i] - 100];
                 }
             }
-            return lines;
+            cursor = token.Index + token.Length;
         }
-
-        private List<string> WrapAnsiText(string text, int maxWidth)
+        Append(value[cursor..]);
+        return lines;
+    }
+    private static readonly Color[] BasicColors = [Color.Black, Color.Red, Color.Green, Color.Yellow, Color.Blue, Color.Magenta, Color.Cyan, Color.White];
+    private static readonly Color[] BrightColors = [Color.Gray, Color.FromArgb(255,85,85), Color.FromArgb(85,255,85), Color.FromArgb(255,255,85), Color.FromArgb(85,85,255), Color.FromArgb(255,85,255), Color.FromArgb(85,255,255), Color.White];
+    internal static Color IndexedColor(int index)
+    {
+        if (index < 8) return BasicColors[index];
+        if (index < 16) return BrightColors[index - 8];
+        if (index >= 232) { int value = 8 + (index - 232) * 10; return Color.FromArgb(value, value, value); }
+        index -= 16;
+        static int Channel(int value) => value == 0 ? 0 : 55 + value * 40;
+        return Color.FromArgb(Channel(index / 36), Channel(index / 6 % 6), Channel(index % 6));
+    }
+    public static bool ContainsAnsiCodes(string input) => !string.IsNullOrEmpty(input) && Tokens.Matches(input).Any(m => m.Value.StartsWith('\x1b'));
+    public static List<(Color color, int startIndex, int endIndex)> ParseColors(string input)
+    {
+        var result = new List<(Color, int, int)>();
+        if (string.IsNullOrEmpty(input)) return result;
+        foreach (Match match in Tokens.Matches(input))
         {
-            var lines = new List<string>();
-            if (string.IsNullOrEmpty(text) || maxWidth <= 0)
-                return lines;
-
-            // Split on newlines first
-            string[] paragraphs = text.Split('\n');
-            foreach (var paragraph in paragraphs)
-            {
-                // We'll treat "words" as chunks separated by visible spaces. 
-                // Because we have ANSI codes, we can't just do `paragraph.Split(' ')`.
-                // Instead, let's parse a "visible" word approach:
-                List<string> words = SplitAnsiParagraphIntoWords(paragraph);
-
-                var sb = new StringBuilder();
-                int currentVisLen = 0; // visible length so far in this line
-
-                foreach (var word in words)
-                {
-                    int wLen = ParamParser.GetVisibleLength(word);
-                    // if adding this word (plus a space) would exceed line
-                    if (currentVisLen > 0 && (currentVisLen + 1 + wLen) > maxWidth)
-                    {
-                        // finalize previous line
-                        lines.Add(sb.ToString());
-                        sb.Clear();
-                        currentVisLen = 0;
-                    }
-
-                    // add space if needed
-                    if (currentVisLen > 0)
-                    {
-                        sb.Append(' ');
-                        currentVisLen++;
-                    }
-
-                    sb.Append(word);
-                    currentVisLen += wLen;
-                }
-
-                // leftover line buffer
-                if (sb.Length > 0)
-                {
-                    lines.Add(sb.ToString());
-                }
-            }
-            return lines;
+            if (!match.Value.StartsWith("[Color(")) continue;
+            var values = match.Value[7..^2].Split(',').Select(s => int.TryParse(s, out int v) ? v : -1).ToArray();
+            if (values.Length == 3 && values.All(v => v is >= 0 and <= 255))
+                result.Add((Color.FromArgb(values[0], values[1], values[2]), match.Index, match.Index + match.Length - 1));
         }
-
-        private List<string> SplitAnsiParagraphIntoWords(string paragraph)
-        {
-            var result = new List<string>();
-            var sb = new StringBuilder();
-            int i = 0;
-            while (i < paragraph.Length)
-            {
-                if (paragraph[i] == '\x1b')
-                {
-                    // Copy the entire escape code verbatim
-                    int escStart = i;
-                    i++;
-                    while (i < paragraph.Length && !char.IsLetter(paragraph[i]))
-                        i++;
-                    if (i < paragraph.Length) i++;
-
-                    // Append that entire escape code to whatever we're building
-                    sb.Append(paragraph, escStart, i - escStart);
-                }
-                else if (paragraph[i] == ' ')
-                {
-                    // We found a visible space => finish the current word
-                    if(paragraph[i + 1] == ' ')
-                    {
-                        sb.Append(paragraph[i]);
-                    }
-                    else if (sb.Length > 0)
-                    {
-                        result.Add(sb.ToString());
-                        sb.Clear();
-                    }
-                    i++;
-                }
-                else
-                {
-                    // a normal character
-                    sb.Append(paragraph[i]);
-                    i++;
-                }
-            }
-
-            // leftover partial word
-            if (sb.Length > 0)
-            {
-                result.Add(sb.ToString());
-            }
-
-            return result;
-        }
-
-        private int CalculateStartX(int contentWidth, int maxWidth)
-        {
-            int borderOffset = ShowBorder ? 1 : 0;
-            int x;
-
-            switch (TextAlignment)
-            {
-                case Alignment.TopCenter:
-                case Alignment.Centered:
-                case Alignment.BottomCenter:
-                    x = (maxWidth - contentWidth) / 2 + borderOffset;
-                    break;
-                case Alignment.TopRight:
-                case Alignment.CenterRight:
-                case Alignment.BottomRight:
-                    x = maxWidth - contentWidth + borderOffset;
-                    break;
-                default:
-                    x = borderOffset; // left
-                    break;
-            }
-
-            // Clamp so it doesn't go off left
-            if (x < borderOffset)
-                x = borderOffset;
-
-            return x;
-        }
-
-        private int CalculateStartY(int contentHeight, int maxHeight)
-        {
-            int borderOffset = ShowBorder ? 1 : 0;
-            int y;
-
-            switch (TextAlignment)
-            {
-                case Alignment.CenterLeft:
-                case Alignment.Centered:
-                case Alignment.CenterRight:
-                    y = (maxHeight - contentHeight) / 2 + borderOffset;
-                    break;
-                case Alignment.BottomLeft:
-                case Alignment.BottomCenter:
-                case Alignment.BottomRight:
-                    y = maxHeight - contentHeight + borderOffset;
-                    break;
-                default:
-                    y = borderOffset; // top
-                    break;
-            }
-
-            if (y < borderOffset)
-                y = borderOffset;
-
-            return y;
-        }
-
-        private void RenderColoredLine(ConsoleBuffer buffer, int startX, int startY, string line, Color defaultFg, Color defaultBg)
-        {
-            // parse ANSI into segments
-            var segments = ColoredStringParser.ParseColoredString(line);
-            // pass to buffer
-            buffer.WriteBuffer(startX, startY, segments);
-        }
+        return result;
     }
 }

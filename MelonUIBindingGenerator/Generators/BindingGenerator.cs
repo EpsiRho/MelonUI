@@ -1,237 +1,116 @@
-﻿using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
+using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace MelonUIBindingGenerator.Generators;
 
-[Generator]
-public class BindingGenerator : IIncrementalGenerator
+[Generator(LanguageNames.CSharp)]
+public sealed class BindingGenerator : IIncrementalGenerator
 {
-    private static bool IsBindingField(SyntaxNode node) =>
-        node is FieldDeclarationSyntax field &&
-        field.AttributeLists.Any(al => al.Attributes
-            .Any(a => a.Name.ToString() == "Binding"))
-        ||
-        node is PropertyDeclarationSyntax prop &&
-        prop.AttributeLists.Any(al => al.Attributes
-            .Any(a => a.Name.ToString() == "Binding"))
-        ||
-        node is EventDeclarationSyntax evnt &&
-        evnt.AttributeLists.Any(al => al.Attributes
-            .Any(a => a.Name.ToString() == "Binding"));
-
-    private static FieldInfo? GetBindingField(GeneratorSyntaxContext context)
-    {
-        var fieldDeclaration = (FieldDeclarationSyntax)context.Node;
-        var model = context.SemanticModel;
-
-        // Get field symbol
-        var fieldSymbol = model.GetDeclaredSymbol(fieldDeclaration.Declaration.Variables[0]);
-        if (fieldSymbol == null) return null;
-
-        var containingType = fieldSymbol.ContainingType;
-        var root = fieldDeclaration.SyntaxTree.GetCompilationUnitRoot();
-        var usings = root.Usings
-           .Select(u => u.ToFullString())
-           .ToList();
-
-        var fi = new FieldInfo(
-            containingType.ContainingNamespace.ToDisplayString(),
-            containingType.Name,
-            fieldDeclaration.Declaration.Variables[0].Identifier.Text,
-            fieldDeclaration.Declaration.Type.ToString(),
-            fieldDeclaration.Modifiers.ToString(),
-            usings,
-            containingType,
-            IsDerivedFromUIElement(containingType));
-
-        return fi;
-    }
-
-    private static bool HasMethodWithName(INamedTypeSymbol containingType, string methodName)
-    {
-        // Look for a method in the members of the type with the specified name
-
-        return containingType.GetMembers().OfType<IMethodSymbol>()
-            .Any(m => m.Name == methodName);
-    }
-
-    private static bool IsDerivedFromUIElement(INamedTypeSymbol containingType)
-    {
-        var baseType = containingType.BaseType;
-        //File.WriteAllText($"C:/Users/jhset/Desktop/{containingType.Name}.txt", $"{baseType.ToDisplayString()}:");
-        while (baseType != null)
-        {
-            if (baseType.ToDisplayString() == "MelonUI.Base.UIElement")
-            {
-                return true;
-            }
-            baseType = baseType.BaseType;
-        }
-        return false;
-    }
+    private static readonly DiagnosticDescriptor Target = Rule("MUIB001", "Unsupported binding target", "[Binding] supports mutable instance fields, not {0}");
+    private static readonly DiagnosticDescriptor Partial = Rule("MUIB002", "Partial class required", "Type '{0}' and every containing type must be a nonstatic partial class");
+    private static readonly DiagnosticDescriptor Mutable = Rule("MUIB003", "Mutable field required", "Binding field '{0}' must be a mutable instance field");
+    private static readonly DiagnosticDescriptor Collision = Rule("MUIB004", "Generated property collision", "Field '{0}' generates property '{1}', which already exists or is generated more than once");
+    private static readonly DiagnosticDescriptor Reserved = Rule("MUIB005", "Binding helper collision", "Type '{0}' declares reserved binding helpers; derive from UIElement or remove the conflicting helpers");
+    private static DiagnosticDescriptor Rule(string id, string title, string message) => new(id, title, message, "MelonUI", DiagnosticSeverity.Error, true);
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        var bindingFields = context.SyntaxProvider
-            .CreateSyntaxProvider(
-                predicate: static (s, _) => IsBindingField(s),
-                transform: static (ctx, _) => GetBindingField(ctx))
-            .Where(static m => m is not null);
-
-        // Group by containing class
-        var groupedFields = bindingFields
-            .Collect() // Collect all fields in a single context
-            .Select(static (fields, _) =>
-                fields
-                    .GroupBy(f => f!.ContainingType, f => f!)
-                    .ToImmutableArray());
-
-        context.RegisterSourceOutput(groupedFields,
-            static (spc, grouped) =>
-            {
-                foreach (var group in grouped)
-                {
-                    ExecuteClass(group.Key, group.ToImmutableArray(), spc);
-                }
-            });
+        var candidates = context.SyntaxProvider.ForAttributeWithMetadataName("MelonUI.Attributes.BindingAttribute",
+            static (_, _) => true, static (ctx, _) => ctx.TargetSymbol).Collect();
+        context.RegisterSourceOutput(candidates, static (output, symbols) => Generate(output, symbols));
     }
 
-    private static void ExecuteClass(INamedTypeSymbol containingType, ImmutableArray<FieldInfo> fields, SourceProductionContext context)
+    private static bool IsUiElement(INamedTypeSymbol type)
     {
-        var className = containingType.Name;
-        var namespaceName = containingType.ContainingNamespace.ToDisplayString();
-        var usingsText = string.Join("\n", fields.First().Usings);
-
-        bool hasGetFunction = HasMethodWithName(containingType, "GetBoundValue");
-        bool hasSetFunction = HasMethodWithName(containingType, "SetBoundValue");
-
-        string boundFunctions = string.Empty;
-        if (!hasGetFunction && !fields.First().DerivesFromUIElement)
-        {
-            boundFunctions += $@"
-/// <summary>
-/// Gets the bound value or the local value.
-/// </summary>
-protected object GetBoundValue(string propertyName, object localValue)
-{{
-    try
-    {{
-        if (_bindings.TryGetValue(propertyName, out var binding))
-        {{
-            if (binding.IsProperty)
-                return binding.GetValue();
-        }}
-        return localValue;
-    }}
-    catch (Exception)
-    {{
-        return localValue;
-    }}
-}}";
-        }
-
-        if (!hasSetFunction && !fields.First().DerivesFromUIElement)
-        {
-            boundFunctions += $@"
-/// <summary>
-/// Sets the bound value or the local value.
-/// </summary>
-protected void SetBoundValue<T>(string propertyName, T value, ref T localStorage)
-{{
-    if (_bindings.TryGetValue(propertyName, out var binding))
-    {{
-        if (binding.IsProperty)
-        {{
-            binding.SetValue(value);
-            return;
-        }}
-        // Event bindings are handled separately
-    }}
-
-    // Not bound, set locally
-    localStorage = value;
-}}";
-        }
-
-        var dic = boundFunctions.Length != 0 ? "protected Dictionary<string, Binding> _bindings = new Dictionary<string, Binding>();" : " ";
-        var properties = fields.Select(field =>
-        {
-            string propName = field.PropertyName.StartsWith("_")
-                ? field.PropertyName.Substring(1)
-                : field.PropertyName;
-            string propPublic = $"{char.ToUpper(propName[0])}{propName.Substring(1)}";
-
-            if (field.PropertyType == "string")
-            {
-                return $@"
-public {field.PropertyType} {propPublic}
-{{
-    get
-    {{
-        var val = GetBoundValue(nameof({propPublic}), $""{{{field.PropertyName}}}"");
-        string stred = $""{{val}}"";
-        return stred;
-    }}
-    set => SetBoundValue(nameof({propPublic}), value, ref {field.PropertyName});
-}}";
-            }
-            else
-            {
-                return $@"
-public {field.PropertyType} {propPublic}
-{{
-    get => ({field.PropertyType})GetBoundValue(nameof({propPublic}), {field.PropertyName});
-    set => SetBoundValue(nameof({propPublic}), value, ref {field.PropertyName});
-}}";
-            }
-        });
-
-        string source = $@"
-// Auto-generated code
-{usingsText}
-
-namespace {namespaceName}
-{{
-    partial class {className}
-    {{
-        {dic}
-        {boundFunctions}
-
-        {string.Join("\n", properties)}
-    }}
-}}";
-
-        context.AddSource($"{className}.g.cs", source);
+        for (var current = type; current != null; current = current.BaseType)
+            if (current.ToDisplayString() == "MelonUI.Base.UIElement") return true;
+        return false;
     }
-
-}
-
-internal class FieldInfo
-{
-    public string Namespace;
-    public string ClassName;
-    public string PropertyName;
-    public string PropertyType;
-    public string Modifiers;
-    public List<string> Usings;
-    public INamedTypeSymbol ContainingType;
-    public bool DerivesFromUIElement;
-
-    public FieldInfo(string ns, string cn, string pn, string pt, string md, List<string> u, INamedTypeSymbol container, bool derives)
+    private static bool HasGeneratedFields(INamedTypeSymbol type) => type.GetMembers().OfType<IFieldSymbol>()
+        .Any(field => field.GetAttributes().Any(attribute => attribute.AttributeClass?.ToDisplayString() == "MelonUI.Attributes.BindingAttribute"));
+    private static bool UsesInheritedBindings(INamedTypeSymbol type)
     {
-        Namespace = ns;
-        ClassName = cn;
-        PropertyName = pn;
-        PropertyType = pt;
-        Modifiers = md;
-        Usings = u;
-        ContainingType = container;
-        DerivesFromUIElement = derives;
+        if (IsUiElement(type)) return true;
+        for (var parent = type.BaseType; parent is not null; parent = parent.BaseType)
+            if (HasGeneratedFields(parent) || (parent.GetMembers("GetBoundValue").Length > 0 && parent.GetMembers("SetBoundValue").Length > 0)) return true;
+        return false;
     }
+    private static bool HasInheritedMember(INamedTypeSymbol type, string name)
+    {
+        for (var parent = type.BaseType; parent is not null; parent = parent.BaseType)
+            if (parent.GetMembers(name).Length > 0 || parent.GetMembers().OfType<IFieldSymbol>().Any(f => f.GetAttributes().Any(a => a.AttributeClass?.ToDisplayString() == "MelonUI.Attributes.BindingAttribute") && PropertyName(f) == name)) return true;
+        return false;
+    }
+    private static string PropertyName(IFieldSymbol field)
+    {
+        var name = field.Name.TrimStart('_');
+        return name.Length == 0 ? "" : char.ToUpperInvariant(name[0]) + name.Substring(1);
+    }
+    private static string Id(string text) => SyntaxFacts.GetKeywordKind(text) != SyntaxKind.None || SyntaxFacts.GetContextualKeywordKind(text) != SyntaxKind.None ? "@" + text : text;
 
-    public override string ToString() => $"{Namespace}.{ClassName}.{PropertyName} : {PropertyType}";
+    private static void Generate(SourceProductionContext output, ImmutableArray<ISymbol> symbols)
+    {
+        var fields = new List<IFieldSymbol>();
+        foreach (var symbol in symbols.Distinct(SymbolEqualityComparer.Default))
+        {
+            if (symbol is not IFieldSymbol field) { output.ReportDiagnostic(Diagnostic.Create(Target, symbol.Locations.FirstOrDefault(), symbol.Kind.ToString())); continue; }
+            if (field.IsStatic || field.IsReadOnly || field.IsConst) { output.ReportDiagnostic(Diagnostic.Create(Mutable, field.Locations.FirstOrDefault(), field.Name)); continue; }
+            fields.Add(field);
+        }
+        foreach (var group in fields.GroupBy(f => f.ContainingType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)))
+        {
+            var type = group.First().ContainingType;
+            var chain = new Stack<INamedTypeSymbol>();
+            bool valid = true;
+            for (var current = type; current != null; current = current.ContainingType)
+            {
+                chain.Push(current);
+                if (current.TypeKind != TypeKind.Class || current.IsStatic || current.IsRecord || current.DeclaringSyntaxReferences.Any(r => r.GetSyntax() is not ClassDeclarationSyntax declaration || !declaration.Modifiers.Any(SyntaxKind.PartialKeyword)))
+                { output.ReportDiagnostic(Diagnostic.Create(Partial, current.Locations.FirstOrDefault(), current.Name)); valid = false; }
+            }
+            if (!valid) continue;
+            bool ui = UsesInheritedBindings(type);
+            if (!ui && new[] { "SetBinding", "RemoveBinding", "GetBoundValue", "SetBoundValue", "__melonBindings" }.Any(name => type.GetMembers(name).Length > 0))
+            { output.ReportDiagnostic(Diagnostic.Create(Reserved, type.Locations.FirstOrDefault(), type.Name)); continue; }
+            var source = new StringBuilder("// <auto-generated/>\n#nullable enable\n");
+            bool hasNamespace = !type.ContainingNamespace.IsGlobalNamespace;
+            if (hasNamespace) source.Append("namespace ").Append(type.ContainingNamespace.ToDisplayString()).Append(" {\n");
+            foreach (var current in chain)
+            {
+                source.Append("partial class ").Append(Id(current.Name));
+                if (current.TypeParameters.Length > 0) source.Append('<').Append(string.Join(", ", current.TypeParameters.Select(p => Id(p.Name)))).Append('>');
+                if (SymbolEqualityComparer.Default.Equals(current, type) && !ui) source.Append(" : global::MelonUI.Base.IBindingHost");
+                source.Append(" {\n");
+            }
+            if (!ui) source.Append(@"
+private readonly global::MelonUI.Base.BindingStore __melonBindings = new();
+public void SetBinding(string name, global::MelonUI.Base.Binding binding) => __melonBindings.SetBinding(name, binding);
+public bool RemoveBinding(string name) => __melonBindings.RemoveBinding(name);
+protected object? GetBoundValue(string name, object? local) => __melonBindings.GetValue(name, local);
+protected void SetBoundValue<T>(string name, T value, ref T local) => __melonBindings.SetValue(name, value, ref local);
+");
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var field in group.OrderBy(f => f.Name, StringComparer.Ordinal))
+            {
+                string name = PropertyName(field);
+                if (name.Length == 0 || type.GetMembers(name).Length > 0 || HasInheritedMember(type, name) || !names.Add(name))
+                { output.ReportDiagnostic(Diagnostic.Create(Collision, field.Locations.FirstOrDefault(), field.Name, name)); continue; }
+                var format = SymbolDisplayFormat.FullyQualifiedFormat.WithMiscellaneousOptions(SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier | SymbolDisplayMiscellaneousOptions.EscapeKeywordIdentifiers);
+                string fieldType = field.Type.ToDisplayString(format);
+                source.Append("public ").Append(fieldType).Append(' ').Append(Id(name)).Append(" { get => (").Append(fieldType).Append(")GetBoundValue(nameof(")
+                    .Append(Id(name)).Append("), ").Append(Id(field.Name)).Append(")!; set => SetBoundValue(nameof(").Append(Id(name)).Append("), value, ref ").Append(Id(field.Name)).Append("); }\n");
+            }
+            foreach (var _ in chain) source.Append("}\n");
+            if (hasNamespace) source.Append("}\n");
+            ulong hash = 14695981039346656037;
+            foreach (char character in group.Key) hash = unchecked((hash ^ character) * 1099511628211);
+            output.AddSource(type.Name + "." + hash.ToString("X16") + ".g.cs", source.ToString());
+        }
+    }
 }

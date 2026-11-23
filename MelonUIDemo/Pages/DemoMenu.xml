@@ -1,56 +1,8 @@
-﻿<MUIPage Width="99%"
-		 Height="90%"
-		 Name="DemoPage"
-		 Assemblies="MelonUI,MelonUIDemo"
-		 ShowBorder="false"
-		 Namespaces="MelonUI.Base,MelonUI.Default,MelonUI.Shaders,MelonUIDemo.Testing,MelonUIDemo.Backends"
-		 Backends="TestPageBackend,DemoWelcomeBackend">
-
-
-	<MusicPlayerElement
-			   Width="30%"
-			   IsVisible="false"
-		   Y="50%"
-			   Height="20%"/>
-	<FPSCounter XYAlignment="TopRight"
-				Width="9"
-				Height="4"
-				OnFrameRendered="{DemoWelcomeBackend.CWM.FrameRendered}"/>
-	
-	<OptionsMenu Name="MUIDemoMenu"
-				 X="0"
-				 Y="0"
-				 IsVisible="false"
-				 Width="50%"
-				 Height="40%">
-		<OptionsMenu.Options>
-			<MenuItem Option="Open MXML Viewer"/>
-			<MenuItem Option="Show Line Demo">
-				<MenuItem.OnSelect MXMLFlags="Show(DemoLine:false)"/>
-			</MenuItem>
-		</OptionsMenu.Options>
-
-	</OptionsMenu>
-
-	<TextBlock Text="{DemoWelcomeBackend.RenderTypeDisplay}"
-			   XYAlignment="TopRight"
-			   TextAlignment="Centered"
-			   Width="15"
-			   Height="3"
-			   Y="5"/>
-
-	<TextBlock Text="{DemoWelcomeBackend.ConsoleSizeDisplay}"
-			   XYAlignment="TopRight"
-			   TextAlignment="Centered"
-			   Width="15"
-			   Height="3"
-			   Y="9"/>
-	
-	<TextBlock Text="{DemoWelcomeBackend.FrameTimeDisplay}"
-			   XYAlignment="TopRight"
-			   TextAlignment="Centered"
-			   Width="35"
-			   Height="3"
-			   Y="13"/>
-
+<MUIPage MxmlVersion="1" Width="99%" Height="90%" Name="DemoPage" Assemblies="MelonUI,MelonUI.Shaders,MelonUIDemo"
+         ShowBorder="false" Namespaces="MelonUI.Shaders,MelonUIDemo.Backends" Backends="DemoWelcomeBackend">
+  <OpenGLShaderElement Name="ShaderScene" Width="100%" Height="100%" ShaderSource="{DemoWelcomeBackend.ShaderSource}"/>
+  <FPSCounter XYAlignment="TopRight" Width="9" Height="4"/>
+  <OptionsMenu Name="MUIDemoMenu" IsVisible="true" Width="50%" Height="40%">
+    <OptionsMenu.Options><MenuItem Option="Show shader"><MenuItem.OnSelect MXMLFlags="Show(ShaderScene:false)"/></MenuItem></OptionsMenu.Options>
+  </OptionsMenu>
 </MUIPage>

@@ -1,0 +1,13 @@
+<MUIPage MxmlVersion="1" Name="Form" ShowBorder="false">
+  <!-- Save this file to recompile the preview. App is the demo's persistent C# backend. -->
+  <TextBlock Text="MXML live preview | Save to update | Tab / Shift+Tab: focus" Height="1" ShowBorder="false"/>
+  <MUIPage Name="Fields" Y="1" Height="17" Width="80%" ShowBorder="false">
+    <TextBox Name="Name" Label="Name (two-way binding)" Text="{App.Name}" Height="5"/>
+    <Button Name="Save" Text="Save and show details" Y="5" Height="3" OnPressed="{App.Save}">
+      <Button.OnPressed><Show Target="Details" Focus="false"/></Button.OnPressed>
+    </Button>
+    <TextBlock Name="Details" Text="The backend callback ran before this ordered Show action." IsVisible="false" Y="8" Height="1" ShowBorder="false"/>
+    <RgbColorPicker Name="Accent" Y="9" Height="8" ColorValue="{App.Accent}" Confirmed="{App.ChooseColor}"/>
+  </MUIPage>
+  <TextBlock Name="Status" Text="{App.Status}" Foreground="{App.Accent}" Height="1" XYAlignment="BottomLeft" ShowBorder="false"/>
+</MUIPage>

@@ -1,0 +1,44 @@
+name: Validate MelonUI 1.0
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - name: Choose supported build entry point
+        shell: pwsh
+        run: |
+          if ($IsWindows) { 'MELONUI_SOLUTION=MelonUIDemo.sln' | Out-File $env:GITHUB_ENV -Append }
+          else { 'MELONUI_SOLUTION=MelonUI.slnf' | Out-File $env:GITHUB_ENV -Append }
+      - run: dotnet restore ${{ env.MELONUI_SOLUTION }}
+      - run: dotnet build ${{ env.MELONUI_SOLUTION }} -c Debug --no-restore --warnaserror
+      - run: dotnet run --project MelonUI.Tests -c Debug --no-build --no-restore -- --soak
+      - run: dotnet build ${{ env.MELONUI_SOLUTION }} -c Release --no-restore --warnaserror
+      - run: dotnet run --project MelonUI.Tests -c Release --no-build --no-restore -- --soak
+      - name: Verify fresh NuGet app and plugin consumers
+        shell: pwsh
+        run: ./scripts/Verify-Packages.ps1
+      - name: Audit dependencies
+        shell: pwsh
+        run: |
+          $auditJson = dotnet list $env:MELONUI_SOLUTION package --vulnerable --include-transitive --format json
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet audit failed.' }
+          $auditJson | Set-Content artifacts/audit.json
+          if ($auditJson -match '"vulnerabilities"') { throw 'Known package advisories need review.' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages-${{ matrix.os }}
+          path: artifacts/package-validation/feed/*.nupkg
+          if-no-files-found: error

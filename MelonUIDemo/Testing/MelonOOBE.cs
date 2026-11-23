@@ -1,4 +1,4 @@
-﻿using MelonUI.Default;
+using MelonUI.Default;
 using MelonUI.Managers;
 using System;
 using System.Collections.Generic;
@@ -11,11 +11,16 @@ namespace MelonUIDemo.Testing
 {
     public class MelonOOBE
     {
-        ConsoleWindowManager WindowManager { get; set; }
-        QueueContainer queueContainer { get; set; }
-        public string MongoURL { get; set; }
-        public string Username { get; set; }
-        public string Password { get; set; }
+        ConsoleWindowManager WindowManager { get; set; } = null!;
+        QueueContainer queueContainer { get; set; } = null!;
+        public string MongoURL { get; set; } = "";
+        public string Username { get; set; } = "";
+        public string Password { get; set; } = "";
+        private void SetStatus(string text)
+        {
+            if (WindowManager.Find<TextBlock>("Status") is { } status) status.Text = text;
+        }
+
         public void InitObjects()
         {
             // Init Container
@@ -40,7 +45,7 @@ namespace MelonUIDemo.Testing
             {
                 MongoURL = res;
                 queueContainer.PopElement();
-                WindowManager.SetStatus("[M/Username/P/L/C]");
+                SetStatus("[M/Username/P/L/C]");
             };
             queueContainer.QueueElement(mongoInput);
 
@@ -54,7 +59,7 @@ namespace MelonUIDemo.Testing
             {
                 Username = res;
                 queueContainer.PopElement();
-                WindowManager.SetStatus("[M/U/Password/L/C]");
+                SetStatus("[M/U/Password/L/C]");
             };
             queueContainer.QueueElement(usernameInput);
 
@@ -69,8 +74,8 @@ namespace MelonUIDemo.Testing
             {
                 Password = res;
                 queueContainer.PopElement();
-                WindowManager.RemoveElement(queueContainer);
-                WindowManager.SetStatus("[M/U/P/Library/C]");
+                queueContainer.Dispose();
+                SetStatus("[M/U/P/Library/C]");
                 DemoDropout();
             };
             queueContainer.QueueElement(passwordInput);
@@ -82,9 +87,9 @@ namespace MelonUIDemo.Testing
 
 
             // Show QueueContainer
-            WindowManager.SetTitle("[Melon OOBE]");
-            WindowManager.SetStatus("[MongoDB/U/P/L/C]");
-            WindowManager.AddElement(queueContainer);
+            WindowManager.Title = "Melon OOBE";
+            SetStatus("[MongoDB/U/P/L/C]");
+            WindowManager.Elements.Add(queueContainer);
 
             FPSCounter fps = new FPSCounter()
             {
@@ -97,7 +102,7 @@ namespace MelonUIDemo.Testing
             };
 
             WindowManager.FrameRendered += fps.OnFrameRendered;
-            WindowManager.AddElement(fps, false);
+            WindowManager.Elements.Add(fps);
 
         }
 
@@ -110,118 +115,17 @@ namespace MelonUIDemo.Testing
                 Width = "50%",
                 Height = "50%",
                 MenuName = "Default UI Objects",
-                UseStatusBar = true,
                 Background = Color.FromArgb(0, 255, 255, 255)
             };
-            menu.Options.Add(new MenuItem("Show Music Player", () =>
+            menu.Options.Add(new MenuItem("RGB color picker", () =>
             {
-                var mgrid = new GridContainer(1, true, 1) // Create a Grid to put the item in so we can use it's animation model (true)
-                {
-                    X = "60%", 
-                    Y = "10%",
-                    Width = "35%",
-                    Height = "40%",
-                    Name = "MusicGrid",
-                    Background = Color.FromArgb(0, 255, 255, 255)
-                };
-
-                MusicPlayerElement mp = new(null) // Takes in a PlaybackManager based class, so you can define an audio manager. I'm using a wrapper for NAudio, Windows Only. 
-                {                                 // Here it's null because we haven't preloaded a file. You could open a FilePicker first or open it from the Music Player.
-                    ShowBorder = false
-                };
-
-                mgrid.AddElement(mp, 0, 0);
-                WindowManager.AddElement(mgrid);
-            }
-            ));
-            menu.Options.Add(new MenuItem("Show Image", () =>
-            {
-                // Image
-                ConsoleImage img = new ConsoleImage(@"", "40%", "99%")
-                {
-                    X = "60%",
-                    Y = "0",
-                    Name = "EpsiPic",
-                    UseBg = true
-                };
-                int mode = 0;
-                img.RegisterKeyboardControl(ConsoleKey.M, () =>
-                {
-                    switch (mode)
-                    {
-                        case 0:
-                            img.UseBg = false;
-                            img.UseColor = true;
-                            img.InitializeImageAsync();
-                            mode++;
-                            break;
-                        case 1:
-                            img.UseBg = false;
-                            img.UseColor = false;
-                            img.InitializeImageAsync();
-                            mode++;
-                            break;
-                        case 2:
-                            img.UseBg = true;
-                            img.UseColor = true;
-                            img.InitializeImageAsync();
-                            mode = 0;
-                            break;
-                    }
-                }, "Change Diplay Mode");
-                img.RegisterKeyboardControl(ConsoleKey.O, () =>
-                {
-                    try
-                    {
-                        var filepickergrid = new GridContainer(1, true, 1)
-                        {
-                            X = "25%",
-                            Y = "25%",
-                            Width = "55%",
-                            Height = "55%",
-                            Name = "MPFilePickerGrid"
-                        };
-                        FilePicker picker = new FilePicker(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures))
-                        {
-                            ShowBorder = false,
-                            Name = "MPFilePicker"
-                        };
-                        picker.OnFileSelected += () =>
-                        {
-                            // On file select, close picker
-                            filepickergrid.AnimateClose(() =>
-                            {
-                                // Remove File Picker
-                                filepickergrid.RenderThreadDeleteMe = true;
-
-                                Task.Run(() =>
-                                {
-                                    try
-                                    {
-                                        img.Path = picker.Path;
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        img.ParentWindow.SetStatus("File Loading Error!");
-                                    }
-                                });
-                            });
-
-                        };
-                        filepickergrid.AddElement(picker, 0, 0);
-                        img.ParentWindow.AddElement(filepickergrid, true);
-                        picker.Show();
-                    }
-                    catch (Exception e)
-                    {
-                        img.ParentWindow.SetStatus("File Picker Error!");
-                    }
-                }, "Open File"); // When O is hit, add a filepicker and handle file input (done thru defining Actions)
-
-                WindowManager.AddElement(img); // Add the image viewer to the grid
-            }
-            ));
-            WindowManager.AddElement(menu, false);
+                var picker = new ColorPicker { Width = "60", Height = "8" };
+                picker.BeginEdit(Color.Cyan);
+                var popup = WindowManager.ShowPopup(picker);
+                picker.Confirmed += _ => popup.Dispose();
+                picker.Cancelled += _ => popup.Dispose();
+            }));
+            WindowManager.Elements.Add(menu);
         }
 
         public void ShowOOBE(ConsoleWindowManager manager)
@@ -232,13 +136,14 @@ namespace MelonUIDemo.Testing
             Console.WriteLine($"(Unless connecting over the internet it likely does)");
             Console.WriteLine($"(Selecting No will launch a Simplified Setup UI, and then output logging)?");
             Console.Write("[Yes/No]> ");
-            string input = Console.ReadLine();
+            string input = Console.ReadLine() ?? "";
             input = input.ToLower();
             if(input == "yes" || input == "y")
             {
                 if(manager != null)
                 {
                     WindowManager = manager;
+                    WindowManager.Elements.Add(new TextBlock { Name = "Status", Width = "100%", Height = "1", XYAlignment = MelonUI.Enums.Alignment.BottomLeft, ShowBorder = false, ConsiderForFocus = false });
                     InitObjects();
                 }
                 else

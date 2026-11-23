@@ -1,272 +1,90 @@
-﻿using MelonUI.Attributes;
-using MelonUI.Base;
-using MelonUI.Enums;
-using MelonUI.Helpers;
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using MelonUI.Attributes;
+using MelonUI.Base;
+using MelonUI.Enums;
 
-namespace MelonUI.Default
+namespace MelonUI.Default;
+
+public class WorkItem
 {
-    public class WorkItem
+    public static readonly string[] Indicators = ["⠁", "⠉", "⠙", "⠸", "⠴", "⠦", "⠇", "⠃"];
+    public string Label { get; set; } = "";
+    public string ElmName { get; set; } = "";
+    public long TotalItems { get; set; }
+    public long CompletedItems { get; set; }
+    public Stopwatch timeSinceRunning { get; } = new();
+    private WorkStatus _status = WorkStatus.Waiting;
+    public WorkStatus Status
     {
-        public int IndicatorIndex { get; set; }
-        public int IndicatorTickMax { get; set; } = 10;
-        public static string[] Indicators 
-            = new string[] { "⠁", "⠉", "⠙", "⠸", "⠴", "⠦", "⠇", "⠃" };
-        public string Label { get; set; }
-        private WorkStatus _status;
-        public WorkStatus Status
+        get => _status;
+        set
         {
-            get
-            {
-                return _status;
-            }
-            set
-            {
-                if(value == _status)
-                {
-                    return;
-                }
-                
-                if(value == WorkStatus.Running)
-                {
-                    timeSinceRunning = Stopwatch.StartNew();
-                }
-                else if (value == WorkStatus.Completed || value == WorkStatus.Errored)
-                {
-                    if (timeSinceRunning != null)
-                    {
-                        timeSinceRunning.Stop();
-                    }
-                }
-                _status = value;
-            }
-        }
-        public Stopwatch timeSinceRunning { get; set; }
-        public long TotalItems { get; set; }
-        public long CompletedItems { get; set; }
-        public string ElmName { get; set; }
-        public WorkItem()
-        { 
-
-        }
-        public WorkItem(string name, string label, bool isRunning)
-        {
-            ElmName = name;
-            Label = label;
-            Status = isRunning ? WorkStatus.Running : WorkStatus.Waiting;
-            if (isRunning)
-            {
-                timeSinceRunning = Stopwatch.StartNew();
-            }
-        }
-        public WorkItem(string name, string label, int totalItems, bool isRunning)
-        {
-            ElmName = name;
-            Label = label;
-            TotalItems = totalItems;
-            Status = isRunning ? WorkStatus.Running : WorkStatus.Waiting;
-            if (isRunning)
-            {
-                timeSinceRunning = Stopwatch.StartNew();
-            }
-        }
-
-        public void Complete()
-        {
-            Status = WorkStatus.Completed;
-        }
-        public void Error()
-        {
-            Status = WorkStatus.Errored;
-        }
-        public void Run()
-        {
-            Status = WorkStatus.Running;
-        }
-        public void Wait()
-        {
-            Status = WorkStatus.Waiting;
-        }
-
-        public string GetIndicator()
-        {
-            if (Status == WorkStatus.Running)
-            {
-                var indicator = Indicators[GetIndicatorIndexByTime()];
-                return indicator;
-            }
-            else if (Status == WorkStatus.Errored)
-            {
-                return "✕";
-            }
-            return Status == WorkStatus.Completed ? "✓" : "⠿";
-        }
-
-        private int GetIndicatorIndexByTime()
-        {
-            if (timeSinceRunning == null) return 0;
-            long elapsedMilliseconds = timeSinceRunning.ElapsedMilliseconds;
-            return (int)((elapsedMilliseconds / 150) % Indicators.Length); // Change speed via interval
-        }
-
-        public string GetElapsedTime()
-        {
-            if (timeSinceRunning == null) return "00:00:00";
-            var elapsed = timeSinceRunning.Elapsed;
-            return $"{elapsed.Minutes:00}:{elapsed.Seconds:00}:{elapsed.Milliseconds:00}";
+            if (_status == value) return;
+            if (value == WorkStatus.Running) timeSinceRunning.Restart(); else timeSinceRunning.Stop();
+            _status = value;
         }
     }
-    public partial class WorkLog : UIElement
+    public WorkItem() { }
+    public WorkItem(string name, string label, bool isRunning) : this(name, label, 0, isRunning) { }
+    public WorkItem(string name, string label, int totalItems, bool isRunning)
+    { ElmName = name; Label = label; TotalItems = totalItems; Status = isRunning ? WorkStatus.Running : WorkStatus.Waiting; }
+    public void Complete() => Status = WorkStatus.Completed;
+    public void Error() => Status = WorkStatus.Errored;
+    public void Run() => Status = WorkStatus.Running;
+    public void Wait() => Status = WorkStatus.Waiting;
+    public string GetIndicator() => Status switch
     {
-        [Binding]
-        private Color runningForeground = Color.FromArgb(255, 33, 165, 255);
-        [Binding]
-        private Color waitingForeground = Color.FromArgb(255, 105, 105, 105);
-        [Binding]
-        private Color erroredForeground = Color.FromArgb(255, 255, 32, 32);
-        [Binding]
-        private Color completedForeground = Color.FromArgb(255, 32, 255, 108);
-        [Binding]
-        private LockedList<WorkItem> tasks;
-        [Binding]
-        private int _visibleStartIndex;
-        private int _totalLines;
+        WorkStatus.Running => Indicators[(int)(timeSinceRunning.ElapsedMilliseconds / 150 % Indicators.Length)],
+        WorkStatus.Completed => "✓", WorkStatus.Errored => "✕", _ => "⠿"
+    };
+    public string GetElapsedTime() => $"{(int)timeSinceRunning.Elapsed.TotalHours:00}:{timeSinceRunning.Elapsed.Minutes:00}:{timeSinceRunning.Elapsed.Seconds:00}";
+}
 
-        [Binding]
-        private bool showStatus = true;
-        [Binding]
-        private bool showTime = true;
-        [Binding]
-        private bool showProgressBar  = false;
-        [Binding]
-        private bool showItemCount = false;
-
-        public WorkLog(LockedList<WorkItem> tasks)
+public partial class WorkLog : UIElement
+{
+    [Binding] private Color runningForeground = Color.FromArgb(33, 165, 255);
+    [Binding] private Color waitingForeground = Color.Gray;
+    [Binding] private Color erroredForeground = Color.FromArgb(255, 32, 32);
+    [Binding] private Color completedForeground = Color.FromArgb(32, 255, 108);
+    [Binding] private LockedList<WorkItem> tasks = new();
+    [Binding] private int _visibleStartIndex;
+    [Binding] private bool showStatus = true;
+    [Binding] private bool showTime = true;
+    [Binding] private bool showProgressBar;
+    [Binding] private bool showItemCount;
+    public bool FollowRunning { get; set; } = true;
+    public WorkLog() { ConsiderForFocus = false; EnableCaching = false; }
+    public WorkLog(LockedList<WorkItem> tasks) : this() { Tasks = tasks ?? throw new ArgumentNullException(nameof(tasks)); }
+    public WorkItem? GetItemByName(string name) => Tasks?.FirstOrDefault(item => item.ElmName == name);
+    protected override void RenderContent(ConsoleBuffer buffer)
+    {
+        var a = ContentRect;
+        if (a.Width == 0 || a.Height == 0) return;
+        var snapshot = Tasks?.ToList().Where(t => t is not null).ToArray() ?? [];
+        int start = Math.Clamp(VisibleStartIndex, 0, Math.Max(0, snapshot.Length - a.Height));
+        if (FollowRunning)
         {
-            Tasks = tasks;
-            VisibleStartIndex = 0;
+            int running = Array.FindIndex(snapshot, item => item.Status == WorkStatus.Running);
+            start = running < 0 ? Math.Max(0, snapshot.Length - a.Height) : Math.Clamp(running, 0, Math.Max(0, snapshot.Length - a.Height));
         }
-        public WorkItem GetItemByName(string name)
+        for (int row = 0; row < a.Height && row + start < snapshot.Length; row++)
         {
-            return Tasks.FirstOrDefault(x => x.ElmName == name);
-        }
-
-        protected override void RenderContent(ConsoleBuffer buffer)
-        {
-            try
+            var item = snapshot[row + start];
+            string prefix = (ShowStatus ? item.GetIndicator() + " " : "") + (ShowItemCount ? $"({Math.Max(0, item.CompletedItems)}/{Math.Max(0, item.TotalItems)}) " : "");
+            string suffix = ShowTime ? " " + item.GetElapsedTime() : "";
+            int remaining = Math.Max(0, a.Width - ConsoleBuffer.GetStringWidth(prefix + suffix));
+            string label = ControlDrawing.Clip(item.Label, remaining);
+            if (ShowProgressBar && item.TotalItems > 0 && remaining >= 5)
             {
-                int availableHeight = ActualHeight - (ShowBorder ? 2 : 0);
-                int width = ActualWidth - (ShowBorder ? 2 : 0);
-                _totalLines = availableHeight;
-
-                UpdateVisibleStartIndex();
-                RenderTasks(buffer, width);
+                int width = Math.Min(20, Math.Max(1, remaining / 2 - 2));
+                int full = (int)(Math.Clamp(item.CompletedItems / (double)item.TotalItems, 0, 1) * width);
+                string bar = "[" + new string('#', full) + new string('-', width - full) + "]";
+                label = ControlDrawing.Clip(item.Label, remaining - bar.Length - 1) + " " + bar;
             }
-            catch (Exception ex)
-            {
-            }
-        }
-
-
-        private void UpdateVisibleStartIndex()
-        {
-            int visibleCount = Tasks.Where(x => x.Status == WorkStatus.Waiting || x.Status == WorkStatus.Running).Count();
-            if (visibleCount < _totalLines)
-            {
-                _visibleStartIndex = Math.Max(Tasks.Count - _totalLines, 0);
-            }
-            else
-            {
-                int latestRunningIndex = Tasks.IndexOf(Tasks.FirstOrDefault(t => t.Status == WorkStatus.Running));
-                if (latestRunningIndex != -1) _visibleStartIndex = latestRunningIndex;
-
-                _visibleStartIndex = Math.Clamp(_visibleStartIndex, 0, Math.Max(Tasks.Count - _totalLines, 0));
-            }
-        }
-
-
-        private void RenderTasks(ConsoleBuffer buffer, int width)
-        {
-            int xOffset = ShowBorder ? 1 : 0;
-            int yOffset = ShowBorder ? 1 : 0;
-            int renderedLines = 0;
-
-            for (int i = VisibleStartIndex; i < Tasks.Count && renderedLines < _totalLines; i++)
-            {
-                var task = Tasks[i];
-                string line = FormatTaskLine(task, width);
-                buffer.WriteString(xOffset, yOffset + renderedLines, line, GetTaskColor(task), Background);
-                renderedLines++;
-            }
-        }
-
-        private string FormatTaskLine(WorkItem task, int width)
-        {
-            int itemCountBoost = ShowItemCount ? 1 : 0;
-            string status = ShowStatus ? task.GetIndicator() : "";
-            string time = ShowTime ? GetElapsedTime(task) : "";
-
-            string itemCount = ShowItemCount && task.TotalItems > 0
-                ? $"({task.CompletedItems}/{task.TotalItems})"
-                : "";
-
-            string progress = ShowProgressBar && task.TotalItems > 0
-                ? RenderProgressBar(task, width - time.Length - itemCount.Length - status.Length - task.Label.Length - 7 - itemCountBoost)
-                : "";
-
-            string Name = ShowProgressBar && progress != "" ? progress : task.Label;
-
-            string namePart = "";
-            if (itemCount == "")
-            {
-                namePart = $"{status} {task.Label} {progress}".Trim();
-            }
-            else
-            {
-                namePart = $"{status} {itemCount} {task.Label} {progress}".Trim();
-            }
-            string trimmedName = namePart.Length > width - time.Length - 1
-                ? namePart.Substring(0, width - time.Length - 6) + "..."
-                : namePart;
-
-            return $" {trimmedName.PadRight(width - time.Length - 3 - itemCountBoost)} {time}";
-        }
-
-        private string RenderProgressBar(WorkItem task, int barWidth)
-        {
-            if(barWidth <= 2)
-            {
-                return "";
-            }
-            int completedBlocks = (int)((double)task.CompletedItems / task.TotalItems * barWidth);
-            completedBlocks = completedBlocks >= barWidth ? barWidth : completedBlocks;
-            return $"[{new string('#', completedBlocks)}{new string('-', barWidth - completedBlocks)}]";
-        }
-
-        private string GetElapsedTime(WorkItem task)
-        {
-            if (task.timeSinceRunning == null) return "00:00";
-            var elapsed = task.timeSinceRunning.Elapsed;
-            return $"{elapsed.Minutes:00}:{elapsed.Seconds:00}";
-        }
-
-        private Color GetTaskColor(WorkItem task)
-        {
-            return task.Status switch
-            {
-                WorkStatus.Running => RunningForeground,
-                WorkStatus.Waiting => WaitingForeground,
-                WorkStatus.Errored => ErroredForeground,
-                WorkStatus.Completed => CompletedForeground,
-                _ => Foreground,
-            };
+            var color = item.Status switch { WorkStatus.Running => RunningForeground, WorkStatus.Waiting => WaitingForeground,
+                WorkStatus.Errored => ErroredForeground, WorkStatus.Completed => CompletedForeground, _ => Foreground };
+            ControlDrawing.Text(buffer, a.X, a.Y + row, prefix + label + suffix, a.Width, color, Background);
         }
     }
 }

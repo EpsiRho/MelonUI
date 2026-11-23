@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+    <Description>Optional OpenGL and Windows Direct3D shader controls for MelonUI.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MelonUI\MelonUI.csproj" />
+    <ProjectReference Include="..\MelonUIBindingGenerator\MelonUIBindingGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all" />
+    <PackageReference Include="ComputeSharp" Version="3.1.0" />
+    <PackageReference Include="OpenTK.Graphics" Version="4.9.3" />
+    <PackageReference Include="OpenTK.Windowing.Desktop" Version="4.9.3" />
+    <None Include="..\README.md" Pack="true" PackagePath="/" />
+    <None Include="..\LICENSE" Pack="true" PackagePath="/" />
+    <None Include="..\THIRD-PARTY-NOTICES.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

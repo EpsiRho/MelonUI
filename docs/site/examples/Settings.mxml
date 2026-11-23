@@ -1,0 +1,10 @@
+<MUIPage MxmlVersion="1" ShowBorder="false">
+  <TextBox Name="Name" Label="Display name" Text="{App.Name}" Width="42" Height="5"/>
+  <Button Text="Save changes" OnPressed="{App.Save}" Y="5" Width="42" Height="3">
+    <Button.OnPressed>
+      <Show Target="Saved" Focus="false"/>
+    </Button.OnPressed>
+  </Button>
+  <TextBlock Name="Saved" Text="{App.Status}" Y="8" Height="1"
+             IsVisible="false" ShowBorder="false"/>
+</MUIPage>

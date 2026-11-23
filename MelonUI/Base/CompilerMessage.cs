@@ -16,6 +16,8 @@ namespace MelonUI.Base
         public (int Line, int Position) MxmlLineNumber { get; set; }
         public int CompilerLineNumber { get; set; }
         public string CompilerFile { get; set; }
+        public string Code { get; init; } = "MXML";
+        public string? SourcePath { get; init; }
         public CompilerMessage(string m, MessageSeverity s, (int line, int position)? mxmlLine = null, [CallerLineNumber] int compilerLine = 0, [CallerFilePath] string compilerFile = "")
         {
             Message = m;

@@ -1,232 +1,110 @@
-﻿using System;
-using System.Collections.Generic;
 using System.Drawing;
-using System.IO;
-using System.Linq;
 using MelonUI.Attributes;
 using MelonUI.Base;
-using static System.Net.Mime.MediaTypeNames;
 
-namespace MelonUI.Default
+namespace MelonUI.Default;
+
+public partial class MenuItem
 {
-    public partial class MenuItem
-    {
-        [Binding]
-        private string _Option;
-        [Binding]
-        public Action onSelect;
-        public MenuItem()
-        {
+    [Binding] private string _Option = "";
+    [Binding] private Action? onSelect;
+    [Binding] private bool _IsEnabled = true;
+    public MenuItem() { }
+    public MenuItem(string option, Action? onSelect) { Option = option; OnSelect = onSelect; }
+}
 
-        }
-        public MenuItem(string option, Action onSelect)
-        {
-            Option = option;
-            OnSelect = onSelect;
-        }
+public partial class OptionsMenu : UIElement
+{
+    [Binding] private List<MenuItem> _Options = new();
+    [Binding] private string menuName = "";
+    [Binding] private Color selectedForeground = Color.Cyan;
+    [Binding] private Color selectedBackground = Color.FromArgb(80, 80, 80);
+    private int _currentIndex;
+    private int _scrollOffset;
+    public int SelectedIndex
+    {
+        get => Options is { Count: > 0 } ? Math.Clamp(_currentIndex, 0, Options.Count - 1) : -1;
+        set { VerifyAccess(); _currentIndex = Math.Max(0, value); Invalidate(); }
     }
-    public partial class OptionsMenu : UIElement
+    public MenuItem? SelectedItem => SelectedIndex >= 0 ? Options[SelectedIndex] : null;
+
+    public OptionsMenu() { EnableCaching = false; }
+    public void Show() => IsVisible = true;
+    public override bool TryHandleKey(ConsoleKeyInfo key)
     {
-        [Binding]
-        private List<MenuItem> _Options;
-        [Binding]
-        public string menuName = "";
-        [Binding]
-        public bool useStatusBar;
-        private int _currentIndex;
-        private int _scrollOffset;
-        [Binding]
-        public Color selectedForeground = Color.Cyan;
-        [Binding]
-        public Color selectedBackground = Color.FromArgb(255, 80, 80, 80);
-
-        public OptionsMenu()
+        if (LockControls || !IsEffectivelyVisible || !IsEffectivelyEnabled) return false;
+        if (base.TryHandleKey(key)) return true;
+        if ((key.Modifiers & (ConsoleModifiers.Alt | ConsoleModifiers.Control)) != 0) return false;
+        int count = Options?.Count ?? 0;
+        switch (key.Key)
         {
-            Options = new();
-            _currentIndex = 0;
-            _scrollOffset = 0;
-            IsVisible = true;
-
-            RegisterKeyboardControl(
-                ConsoleKey.UpArrow,
-                () => {
-                    if (_currentIndex > 0)
-                    {
-                        _currentIndex--;
-                    }
-                    else
-                    {
-                        _currentIndex = Options.Count - 1;
-                    }
-                    NeedsRecalculation = true;
-                },
-                $"Scroll Up"
-            );
-            RegisterKeyboardControl(
-                ConsoleKey.DownArrow,
-                () => {
-                    if (_currentIndex < Options.Count - 1)
-                    {
-                        _currentIndex++;
-                    }
-                    else
-                    {
-                        _currentIndex = 0;
-                    }
-                    NeedsRecalculation = true;
-                },
-                $"Scroll Down"
-            );
-            RegisterKeyboardControl(
-                ConsoleKey.RightArrow,
-                () => {
-                    OnSelect();
-                    NeedsRecalculation = true;
-                },
-                $"Select"
-            );
-            RegisterKeyboardControl(
-                ConsoleKey.Enter,
-                () => {
-                    OnSelect();
-                    NeedsRecalculation = true;
-                },
-                $"Select"
-            );
-            var ctl = new KeyboardControl()
-            {
-                Description = "Jump to section",
-                Wildcard = (keyInfo) =>
-                {
-                    if (char.IsLetterOrDigit(keyInfo.KeyChar))
-                    {
-                        return true;
-                    }
-                    return false;
-                },
-            };
-            ctl.Action = () =>
-            {
-                var item = Options.FirstOrDefault(x => x.Option.ToUpper().StartsWith(GetKeyDisplay(ctl.Key.Value)));
-                if(item == null)
-                {
-                    return;
-                }
-                var curItem = Options[_currentIndex];
-                if (item.Option != null)
-                {
-                    var idx = Options.IndexOf(item);
-                    if (idx <= _currentIndex)
-                    {
-                        if (_currentIndex < Options.Count - 1 && curItem.Option.First() == item.Option.First())
-                        {
-                            _currentIndex++;
-                            return;
-                        }
-                    }
-
-                    _currentIndex = idx;
-                }
-                NeedsRecalculation = true;
-            };
-            RegisterKeyboardControl(ctl);
+            case ConsoleKey.UpArrow: Move(-1); return true;
+            case ConsoleKey.DownArrow: Move(1); return true;
+            case ConsoleKey.Home: SelectEdge(false); return true;
+            case ConsoleKey.End: SelectEdge(true); return true;
+            case ConsoleKey.PageUp: Move(-Math.Max(1, ContentRect.Height - 1)); return true;
+            case ConsoleKey.PageDown: Move(Math.Max(1, ContentRect.Height - 1)); return true;
+            case ConsoleKey.Enter:
+            case ConsoleKey.RightArrow:
+                if (SelectedItem is { IsEnabled: true } item) item.OnSelect?.Invoke();
+                if (!IsDisposed) Invalidate(); return true;
         }
-        private string GetKeyDisplay(ConsoleKey key)
+        if (count > 0 && char.IsLetterOrDigit(key.KeyChar))
         {
-            return key switch
+            for (int offset = 1; offset <= count; offset++)
             {
-                ConsoleKey.Spacebar => "Space",
-                ConsoleKey.Enter => "Enter",
-                ConsoleKey.Escape => "Esc",
-                ConsoleKey.Delete => "Del",
-                ConsoleKey.Backspace => "Back",
-                ConsoleKey.Tab => "Tab",
-                ConsoleKey.UpArrow => "↑",
-                ConsoleKey.DownArrow => "↓",
-                ConsoleKey.LeftArrow => "←",
-                ConsoleKey.RightArrow => "→",
-                ConsoleKey.F1 => "F1",
-                ConsoleKey.F2 => "F2",
-                ConsoleKey.F3 => "F3",
-                ConsoleKey.F4 => "F4",
-                ConsoleKey.F5 => "F5",
-                ConsoleKey.F6 => "F6",
-                ConsoleKey.F7 => "F7",
-                ConsoleKey.F8 => "F8",
-                ConsoleKey.F9 => "F9",
-                ConsoleKey.F10 => "F10",
-                ConsoleKey.F11 => "F11",
-                ConsoleKey.F12 => "F12",
-                _ => key.ToString().Last().ToString()
-            };
+                int index = (SelectedIndex + offset) % count;
+                if (Options![index] is { IsEnabled: true } item && (item.Option ?? "").StartsWith(key.KeyChar.ToString(), StringComparison.OrdinalIgnoreCase))
+                { SelectedIndex = index; break; }
+            }
+            return true;
         }
+        return false;
+    }
 
-        public void Show()
+    private void Move(int direction)
+    {
+        int count = Options?.Count ?? 0;
+        if (count == 0) return;
+        int index = SelectedIndex;
+        int sign = Math.Sign(direction);
+        for (int step = 0; step < Math.Max(1, Math.Abs(direction)); step++)
+            for (int search = 0; search < count; search++)
+            {
+                index = (index + sign + count) % count;
+                if (Options![index]?.IsEnabled == true) break;
+            }
+        SelectedIndex = index;
+    }
+
+    private void SelectEdge(bool last)
+    {
+        var enabled = (Options ?? []).Select((item, index) => (item, index)).Where(x => x.item?.IsEnabled == true).ToArray();
+        if (enabled.Length > 0) SelectedIndex = last ? enabled[^1].index : enabled[0].index;
+    }
+
+    protected override void RenderContent(ConsoleBuffer buffer)
+    {
+        var area = ContentRect;
+        if (area.Width == 0 || area.Height == 0) return;
+        int y = area.Y, rows = area.Height;
+        if (!string.IsNullOrEmpty(MenuName))
+        { ControlDrawing.Text(buffer, area.X, y++, MenuName, area.Width, Foreground, Background); rows--; }
+        if (rows <= 0) return;
+        int count = Options?.Count ?? 0;
+        _currentIndex = count == 0 ? 0 : Math.Clamp(_currentIndex, 0, count - 1);
+        if (count == 0) { ControlDrawing.Text(buffer, area.X, y, "(empty)", area.Width, Foreground, Background); return; }
+        if (Options![_currentIndex]?.IsEnabled != true && Options.Any(x => x?.IsEnabled == true)) SelectEdge(false);
+        _scrollOffset = Math.Clamp(_scrollOffset, 0, Math.Max(0, count - rows));
+        if (_currentIndex < _scrollOffset) _scrollOffset = _currentIndex;
+        if (_currentIndex >= _scrollOffset + rows) _scrollOffset = _currentIndex - rows + 1;
+        for (int row = 0; row < rows && row + _scrollOffset < count; row++)
         {
-            IsVisible = true;
-        }
-
-        protected override void RenderContent(ConsoleBuffer buffer)
-        {
-            if (!IsVisible)
-            {
-                return;
-            }
-            int totalItems = Options.Count;
-            int bump = ShowBorder ? 1 : 0;
-            int displayableItems = ShowBorder ? buffer.Height - 4 : buffer.Height - 2;
-
-            // Ensure scrolling is within bounds
-            if (_currentIndex < _scrollOffset)
-                _scrollOffset = _currentIndex;
-            else if (_currentIndex >= _scrollOffset + displayableItems)
-                _scrollOffset = _currentIndex - displayableItems + 1;
-
-            if (!UseStatusBar && !string.IsNullOrEmpty(MenuName))
-            {
-                if (ShowBorder)
-                {
-                    var borderForeground = IsFocused ? FocusedBorderColor : BorderColor;
-                    var borderBackground = IsFocused ? FocusedBackground : Background;
-
-                    buffer.WriteString(1, bump, MenuName.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), Foreground, Background);
-                    bump++;
-                    buffer.WriteString(0, bump, $"{"├".PadRight(buffer.Width - 1, BoxHorizontal).Substring(0, buffer.Width - 1)}┤", borderForeground, borderBackground);
-                    bump++;
-                }
-                else
-                {
-                    buffer.WriteString(1, bump, MenuName.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), Foreground, Background);
-                    bump++;
-                }
-            }
-            else if (UseStatusBar && !string.IsNullOrEmpty(MenuName))
-            {
-                ParentWindow.SetStatus(MenuName);
-            }
-            for (int i = 0; i < displayableItems && i + _scrollOffset < totalItems; i++)
-            {
-                var entry = Options[i + _scrollOffset];
-                bool isSelected = (i + _scrollOffset) == _currentIndex;
-                string entryName = entry.Option;
-
-                // Highlight the selected entry
-                Color foreground = isSelected ? SelectedForeground : Foreground;
-                Color background = isSelected ? SelectedBackground : Background;
-
-                buffer.WriteString(1, i + bump, entryName.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), foreground, background);
-            }
-            NeedsRecalculation = false;
-        }
-
-        private void OnSelect()
-        {
-            var selectedEntry = Options[_currentIndex];
-
-            if(selectedEntry.OnSelect != null)
-            {
-                selectedEntry.OnSelect();
-            }
+            int index = row + _scrollOffset;
+            var item = Options[index];
+            bool selected = index == _currentIndex && IsFocused;
+            var fg = item?.IsEnabled == false ? Color.Gray : selected ? SelectedForeground : Foreground;
+            ControlDrawing.Text(buffer, area.X, y + row, (item?.Option ?? "").PadRight(area.Width), area.Width, fg, selected ? SelectedBackground : Background);
         }
     }
 }

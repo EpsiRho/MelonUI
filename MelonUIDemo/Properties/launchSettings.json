@@ -1,7 +1,8 @@
 {
   "profiles": {
     "MelonUIDemo": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "--mxml"
     },
     "WSL": {
       "commandName": "WSL2",

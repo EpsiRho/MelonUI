@@ -1,167 +1,147 @@
-﻿using MelonUI.Base;
+using System.Threading.Channels;
+using MelonUI.Base;
 using MelonUI.Default;
 using MelonUI.Managers;
-using MelonUIDemo.Testing;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace MelonUIDemo.Backends
+namespace MelonUIDemo.Backends;
+
+public static class DemoWelcomeBackend
 {
-    public static class DemoWelcomeBackend
+    // Public properties are used by the existing experimental MXML bindings.
+    public static ConsoleWindowManager CWM { get; set; } = null!;
+    public static string RenderTypeDisplay => CWM.UsePlatformSpecificRenderer ? Win32Renderer.IsSupported ? "Win32" : "Unix" : "SysV2";
+    public static string ConsoleSizeDisplay => $"W/H: {Console.WindowWidth}/{Console.WindowHeight}";
+    public static string FrameTimeDisplay { get; set; } = "Frame time: unknown";
+    public static DateTime LastFrameTime = DateTime.Now;
+    public static List<double> FrameTimes = new();
+    public static string WelcomeText { get; set; } = "MelonUI experimental MXML viewer\nEnter a file to watch for changes.";
+    public static string ErrorInfo { get; set; } = "";
+    public static string MXML { get; set; } = "";
+    public static string MXMLPath { get; set; } = "";
+    public static MUIPage? WatchedPage;
+    public static FileSystemWatcher? PageWatcher;
+    public static string ShaderSource { get; set; } = "";
+    private static Channel<bool>? _changes;
+    private static CancellationTokenSource? _watchStop;
+    private static Task? _watchTask;
+
+    public static Func<ConsoleKeyInfo, bool> CloseErrorDiagFunc { get; set; } = _ => true;
+    public static Action CloseErrorDiag { get; set; } = () =>
     {
-        // Properties cannot be found without {get;set;} methods defined.
-        public static ConsoleWindowManager CWM { get; set; }
-        public static CancellationTokenSource CancelSource = new CancellationTokenSource();
+        if (CWM.Find<UIElement>("ErrorInfo") is { } error) error.IsVisible = false;
+        if (CWM.Find<TextBox>("FileInput") is { } input) CWM.Focus(input);
+    };
 
-        public static string RenderTypeDisplay => CWM.UsePlatformSpecificRenderer ? Win32Renderer.IsSupported ? "Win32" : "Unix" : "SysV2";
-        public static string ConsoleSizeDisplay => $"W/H: {Console.WindowWidth}/{Console.WindowHeight}";
-        public static string FrameTimeDisplay { get; set; } = $"Frame Time: UKN";
-        public static DateTime LastFrameTime = DateTime.Now;
-        public static List<double> FrameTimes = new List<double>();
-        //public static PlaybackManager playbackManager { get; set; } = new AudioPlaybackManager(@"G:\Music\Soundbites\Jai Wolf\Hikikomori [186213058] [2021]\01 - Jai Wolf - Hikikomori (Demo).flac");
-        public static string WelcomeText { get; set; }
-            = "[Color(72, 168, 241)]MelonUI V1.0b MXML Demo (1216122424)\n" +
-              "[Color(255, 255, 255)]Any file you enter will be watched for changes, and update the MUIPage on file save.\n" +
-              "[Color(199, 59, 59)]Support is limited, as are compiler messages. [Color(255, 255, 255)]If you're having trouble, contact Epsi :3";
-        public static string ErrorInfo { get; set; }
-        public static string MXML { get; set; }
-        public static string MXMLPath { get; set; }
-        public static MUIPage WatchedPage;
-        public static FileSystemWatcher PageWatcher;
-        public static string ShaderSource { get; set; }
-        public static Func<ConsoleKeyInfo, bool> CloseErrorDiagFunc { get; set; } = CloseErrorDialogCheck;
-        public static bool CloseErrorDialogCheck(ConsoleKeyInfo key)
+    public static Action<string, TextBox> FilePathInput { get; set; } = (path, input) =>
+    {
+        path = path.Replace("\\", "/").Replace("\"", "");
+        try
         {
-            return true;
+            MXML = File.ReadAllText(path);
+            MXMLPath = Path.GetFullPath(path);
+            input.Text = path;
+            CloseWelcomeScreen();
         }
-        public static Action CloseErrorDiag { get; set; } = () =>
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
-            var elm = CWM.GetSubChildByName("ErrorInfo");
-            var tbelm = CWM.GetSubChildByName("FileInput");
-            elm.IsVisible = false;
-            CWM.FocusedElement = tbelm;
-            CWM.MoveFocus(tbelm);
-        };
-
-        public static Action<string, TextBox> FilePathInput { get; set; } = (string str, TextBox e) =>
-        {
-            str = str.Replace("\\", "/").Replace("\"", "");
-            if(File.Exists(str))
+            if (CWM.Find<TextBlock>("ErrorInfo") is { } error)
             {
-                e.Text = str;
-                try
-                {
-                    MXML = File.ReadAllText(str);
-                    MXMLPath = str;
-                    CloseWelcomeScreen();
-                    return;
-                }
-                catch(Exception ex)
-                {
-                    var er = (TextBlock)CWM.GetSubChildByName("ErrorInfo");
-                    er.Text = $"The file {str} could not be opened!\n(Press any key to continue)";
-                }
-                return;
+                error.Text = $"Could not open {path}: {ex.Message}";
+                error.IsVisible = true;
+                CWM.Focus(error);
             }
-
-            var err = (TextBlock)CWM.GetSubChildByName("ErrorInfo");
-            err.Text = $"The file {str} was not found!\n(Press any key to continue)";
-            err.IsVisible = true;
-            CWM.FocusedElement = err;
-            CWM.MoveFocus(err);
-
-        };
-        public static void CloseWelcomeScreen()
-        {
-            CWM.GetSubChildByName("DemoInfo").IsVisible = false;
-            CWM.GetSubChildByName("FileInput").IsVisible = false;
-            CWM.GetSubChildByName("ErrorInfo").IsVisible = false;
-
-            // Compile MXML
-            CompilePageChanges();
-
-            // Remove the old page, since they would be overlapping.
-            CWM.RemoveElement(CWM.GetSubChildByName("DemoWelcomePage"));
-
-            // Start the watcher
-            CreateWatcher();
-
-
         }
+    };
 
-        public static void CreateWatcher()
+    public static void CloseWelcomeScreen()
+    {
+        if (!ReplacePage(MXML)) return;
+        CWM.Find<UIElement>("DemoWelcomePage")?.Dispose();
+        CreateWatcher();
+    }
+
+    public static void CreateWatcher()
+    {
+        PageWatcher?.Dispose();
+        var previousStop = _watchStop;
+        previousStop?.Cancel();
+        var stop = _watchStop = new CancellationTokenSource();
+        var changes = _changes = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
         {
-            PageWatcher = new FileSystemWatcher();
-            PageWatcher.Path = Directory.GetParent(MXMLPath).FullName;
-            PageWatcher.Filter = "*.xml";
-            PageWatcher.IncludeSubdirectories = true;
-            PageWatcher.EnableRaisingEvents = true;
-            PageWatcher.NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.LastAccess | NotifyFilters.Size;
-
-            bool ping = false;
-            PageWatcher.Changed += (s, e) =>
-            {
-                CompilePageChanges();
-            };
-        }
-
-        public static void CompilePageChanges()
+            SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest
+        });
+        var path = MXMLPath;
+        // One background reader coalesces filesystem notifications. Only its short UI action touches the tree.
+        var previous = _watchTask;
+        _watchTask = Task.Run(async () =>
         {
-            CWM.SetStatus("Changes Found");
             try
             {
-                CWM.RemoveElement(WatchedPage);
-                try
+                if (previous is not null) await previous;
+                previousStop?.Dispose();
+                await foreach (var change in changes.Reader.ReadAllAsync(stop.Token))
                 {
-                    MXML = File.ReadAllText(MXMLPath);
-                }
-                catch (Exception)
-                {
-                    int count = 0;
-                    CWM.SetStatus("Waiting for file to unlock");
-                    while (count < 5)
+                    await Task.Delay(100, stop.Token);
+                    while (changes.Reader.TryRead(out _)) { }
+                    try
                     {
-                        try
-                        {
-                            MXML = File.ReadAllText(MXMLPath);
-                            break;
-                        }
-                        catch (Exception)
-                        {
-                            Thread.Sleep(1000);
-                        }
+                        var markup = await File.ReadAllTextAsync(path, stop.Token);
+                        await CWM.InvokeAsync(() => { MXML = markup; ReplacePage(markup); });
                     }
-
-                }
-                CWM.SetStatus("Compiling MXML");
-                WatchedPage = new MUIPage();
-                var chk = WatchedPage.Compile(MXML);
-                if (!chk)
-                {
-                    CWM.SetStatus($"Page compilation failed");
-                    CancelSource.Cancel();
-                    string sc = WatchedPage.GetSimpleCompilerDisplay();
-                    while (CWM.IsManaged) { Thread.Sleep(20); }
-                    Thread.Sleep(200);
-                    Console.Clear();
-                    Console.SetCursorPosition(0, 0);
-                    Console.WriteLine(sc);
-                    return;
-                }
-                CWM.AddElement(WatchedPage);
-                CWM.SetStatus($"Page compiled!");
-                CWM.MoveFocus(WatchedPage.Children.FirstOrDefault(x => x.ConsiderForFocus && x.IsVisible));
-                if(CancelSource.IsCancellationRequested)
-                {
-                    CancelSource = new CancellationTokenSource();
-                    DemoWelcomeBackend.CWM.ManageConsole(DemoWelcomeBackend.CancelSource.Token);
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        await CWM.InvokeAsync(() => SetStatus($"Could not reload page: {ex.Message}"));
+                    }
                 }
             }
-            catch (Exception ex) { }
+            catch (OperationCanceledException) { }
+            catch (InvalidOperationException) when (!CWM.IsRunning) { }
+        });
+        PageWatcher = new FileSystemWatcher(Path.GetDirectoryName(path)!, Path.GetFileName(path))
+        {
+            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName
+        };
+        PageWatcher.Changed += (_, _) => changes.Writer.TryWrite(true);
+        PageWatcher.Created += (_, _) => changes.Writer.TryWrite(true);
+        PageWatcher.Renamed += (_, _) => changes.Writer.TryWrite(true);
+        PageWatcher.EnableRaisingEvents = true;
+    }
+
+    public static void CompilePageChanges() => _changes?.Writer.TryWrite(true);
+
+    private static bool ReplacePage(string markup)
+    {
+        var replacement = WatchedPage ?? new MUIPage();
+        if (!replacement.Compile(markup, MXMLPath.Length == 0 ? null : MXMLPath))
+        {
+            SetStatus($"Page compilation failed: {replacement.GetSimpleCompilerDisplay()}");
+            if (WatchedPage is null) replacement.Dispose();
+            return false;
         }
+        WatchedPage = replacement;
+        if (replacement.ParentWindow is null) CWM.Elements.Add(replacement);
+        CWM.Focus(replacement);
+        SetStatus("Page compiled");
+        return true;
+    }
+
+    private static void SetStatus(string text)
+    {
+        if (CWM.Find<TextBlock>("Status") is { } status) status.Text = text;
+    }
+
+    public static async Task StopWatcherAsync()
+    {
+        PageWatcher?.Dispose();
+        PageWatcher = null;
+        if (_watchTask is not null)
+        {
+            if (!_watchTask.IsCompleted) _watchStop?.Cancel();
+            await _watchTask;
+        }
+        _watchStop?.Dispose();
+        _watchTask = null;
+        _watchStop = null;
+        _changes = null;
     }
 }

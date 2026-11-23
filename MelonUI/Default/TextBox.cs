@@ -1,4 +1,4 @@
-﻿using MelonUI.Attributes;
+using MelonUI.Attributes;
 using MelonUI.Base;
 using System;
 using System.Collections.Generic;
@@ -25,26 +25,28 @@ namespace MelonUI.Default
         {
             get
             {
-                return (bool)GetBoundValue(nameof(HideCharacters), _HideCharacters);
+                return (bool)(GetBoundValue(nameof(HideCharacters), _HideCharacters) ?? _HideCharacters);
             }
             set
             {
                 SetBoundValue(nameof(HideCharacters), value, ref _HideCharacters);
-                IsCharactersHidden = value;
+                _revealed = false;
             }
         }
-        [Binding]
-        private bool isCharactersHidden = false;
+        private bool _revealed;
+        public bool IsCharactersHidden => HideCharacters && !_revealed;
+        public bool ReadOnly { get; set; }
+        public int MaxLength { get; set; }
         [Binding]
         private Color cursorColorForeground = Color.Cyan;
         [Binding]
         private Color cursorColorBackground = Color.Gray;
         [Binding]
-        private Action<string, TextBox> onTextChanged;
+        private Action<string, TextBox>? onTextChanged;
         [Binding]
-        public Action<string, TextBox> onEnter;
+        public Action<string, TextBox>? onEnter;
         [Binding]
-        public Action enterHit;
+        public Action? enterHit;
 
         [Binding]
         private bool multiline = false;
@@ -56,6 +58,8 @@ namespace MelonUI.Default
 
         public TextBox()
         {
+            Height = "5";
+            EnableCaching = false;
             var enter = new KeyboardControl
             {
                 Description = "Enter (Shift+Enter submits in multiline mode)",
@@ -63,7 +67,7 @@ namespace MelonUI.Default
             };
             enter.Action = () =>
             {
-                if (Multiline && (enter.KeyInfo.Value.Modifiers & ConsoleModifiers.Shift) == 0)
+                if (Multiline && (enter.KeyInfo.GetValueOrDefault().Modifiers & (ConsoleModifiers.Shift | ConsoleModifiers.Control)) == 0)
                     InsertText("\n");
                 else
                 {
@@ -84,27 +88,21 @@ namespace MelonUI.Default
                 Wildcard = key => Multiline &&
                     (key.Key == ConsoleKey.UpArrow || key.Key == ConsoleKey.DownArrow)
             };
-            vertical.Action = () => MoveVertical(vertical.KeyInfo.Value.Key == ConsoleKey.UpArrow ? -1 : 1);
+            vertical.Action = () => MoveVertical(vertical.KeyInfo.GetValueOrDefault().Key == ConsoleKey.UpArrow ? -1 : 1);
             RegisterKeyboardControl(vertical);
 
             RegisterKeyboardControl(ConsoleKey.Backspace, () => DeleteCluster(true), "Delete previous character");
             RegisterKeyboardControl(ConsoleKey.Delete, () => DeleteCluster(false), "Delete next character");
-            RegisterKeyboardControl(ConsoleKey.Tab, () =>
+            RegisterKeyboardControl(ConsoleKey.R, () =>
             {
-                if (HideCharacters)
-                {
-                    IsCharactersHidden = !IsCharactersHidden;
-                    _preferredColumn = null;
-                    NeedsRecalculation = true;
-                }
-            }, "Toggle hidden characters");
-
+                if (HideCharacters && IsFocused) { _revealed = !_revealed; _preferredColumn = null; Invalidate(); }
+            }, "Reveal/conceal password", requireControl: true);
             var typing = new KeyboardControl
             {
                 Description = "Typing",
-                Wildcard = key => !char.IsControl(key.KeyChar)
+                Wildcard = key => !ReadOnly && !char.IsControl(key.KeyChar) && (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) == 0
             };
-            typing.Action = () => InsertText(typing.KeyInfo.Value.KeyChar.ToString());
+            typing.Action = () => InsertText(typing.KeyInfo.GetValueOrDefault().KeyChar.ToString());
             RegisterKeyboardControl(typing);
         }
 
@@ -112,7 +110,7 @@ namespace MelonUI.Default
         {
             CursorPosition = Math.Clamp(CursorPosition, 0, (Text ?? "").Length);
             if (CursorPosition == 0 || CursorPosition == (Text ?? "").Length) return;
-            var starts = StringInfo.ParseCombiningCharacters(Text);
+            var starts = StringInfo.ParseCombiningCharacters(Text ?? "");
             int index = Array.BinarySearch(starts, CursorPosition);
             if (index < 0) CursorPosition = starts[Math.Max(0, ~index - 1)];
         }
@@ -140,7 +138,9 @@ namespace MelonUI.Default
 
         private void InsertText(string value)
         {
+            if (ReadOnly) return;
             NormalizeCursor();
+            if (MaxLength > 0) value = value[..Math.Min(value.Length, Math.Max(0, MaxLength - (Text ?? "").Length))];
             Text = (Text ?? "").Insert(CursorPosition, value);
             CursorPosition += value.Length;
             TextEdited();
@@ -148,6 +148,7 @@ namespace MelonUI.Default
 
         private void DeleteCluster(bool backwards)
         {
+            if (ReadOnly) return;
             NormalizeCursor();
             int other = AdjacentBoundary(backwards ? -1 : 1);
             int start = Math.Min(CursorPosition, other);
@@ -163,6 +164,12 @@ namespace MelonUI.Default
             _preferredColumn = null;
             NeedsRecalculation = true;
             OnTextChanged?.Invoke(Text, this);
+        }
+
+        protected override void OnPropertyChanged(string name)
+        {
+            if (name == nameof(IsFocused) && !IsFocused) _revealed = false;
+            base.OnPropertyChanged(name);
         }
 
         private List<(int Start, int End)> GetLines()
@@ -193,7 +200,7 @@ namespace MelonUI.Default
 
         private string DisplayCluster(string cluster)
         {
-            if (IsCharactersHidden) return HiddenCharacter.ToString();
+            if (HideCharacters && (!_revealed || ParentWindow?.IsCapturing == true)) return HiddenCharacter.ToString();
             // Bound single-line text may contain newlines; never write control codes to the buffer.
             if (cluster.Any(char.IsControl)) return " ";
             return cluster;
@@ -257,7 +264,7 @@ namespace MelonUI.Default
             NormalizeCursor();
             int border = ShowBorder ? 1 : 0;
             int labelY = border;
-            int labelWidth = Math.Max(0, buffer.Width - 2);
+            int labelWidth = Math.Max(0, buffer.Width - border * 2);
             if (labelY < buffer.Height && labelWidth > 0)
             {
                 buffer.WriteString(1, labelY, new string(' ', labelWidth), Foreground, Background);
@@ -273,8 +280,8 @@ namespace MelonUI.Default
                     x += width;
                 }
             }
-            int top = ShowBorder ? 3 : 1;
-            if (ShowBorder && buffer.Width >= 2 && buffer.Height > 3)
+            int top = string.IsNullOrEmpty(Label) ? border : ShowBorder ? 3 : 1;
+            if (!string.IsNullOrEmpty(Label) && ShowBorder && buffer.Width >= 2 && buffer.Height > 3)
                 buffer.WriteString(0, 2, "├" + new string(BoxHorizontal, buffer.Width - 2) + "┤",
                     IsFocused ? FocusedBorderColor : BorderColor, IsFocused ? FocusedBackground : Background);
 
@@ -307,7 +314,7 @@ namespace MelonUI.Default
                     string cluster = elements.GetTextElement();
                     int width = ClusterWidth(cluster);
                     int x = column - _scrollOffset;
-                    bool selected = lineIndex == row && position == CursorPosition;
+                    bool selected = IsFocused && lineIndex == row && position == CursorPosition;
                     // Never draw half of a wide grapheme over a border or outside the viewport.
                     if (x >= 0 && x + width <= visibleWidth)
                     {
@@ -320,7 +327,7 @@ namespace MelonUI.Default
                     position += cluster.Length;
                     if (column >= _scrollOffset + visibleWidth) break;
                 }
-                if (lineIndex == row && !cursorDrawn)
+                if (IsFocused && lineIndex == row && !cursorDrawn)
                 {
                     int x = cursorColumn - _scrollOffset;
                     if (x >= 0 && x < visibleWidth)

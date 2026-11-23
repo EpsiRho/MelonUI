@@ -1,4 +1,4 @@
-﻿using ATL;
+
 using Pastel;
 using System;
 using System.Collections.Generic;
@@ -21,8 +21,8 @@ namespace MelonUI.Base
 
         public int Width { get; private set; }
         public int Height { get; private set; }
-        public Win32Renderer WRenderer { get; private set; }
-        public UnixRenderer URenderer { get; private set; }
+        public Win32Renderer? WRenderer { get; private set; }
+        public UnixRenderer? URenderer { get; private set; }
 
         /// <summary>
         /// Indexer so we can write: this[y, x] = ...
@@ -79,7 +79,7 @@ namespace MelonUI.Base
 
         public void Clear(Color background)
         {
-            var emptyPixel = new ConsolePixel(' ', Color.Transparent, Color.Transparent, false);
+            var emptyPixel = new ConsolePixel(' ', Color.Transparent, background, false);
             for (int y = 0; y < Height; y++)
             {
                 for (int x = 0; x < Width; x++)
@@ -164,7 +164,7 @@ namespace MelonUI.Base
 
         public void WriteString(int x, int y, string text, Color foreground, Color background)
         {
-            if (string.IsNullOrEmpty(text)) return;
+            if (string.IsNullOrEmpty(text) || y < 0 || y >= Height) return;
 
             int currentX = x;
             var indices = StringInfo.ParseCombiningCharacters(text);
@@ -176,6 +176,7 @@ namespace MelonUI.Base
 
                 int charWidth = GetTextElementWidth(element);
                 if (currentX >= Width) break;
+                if (currentX < 0) { currentX += charWidth; continue; }
 
                 if (charWidth == 2 && currentX + 1 < Width)
                 {
@@ -293,80 +294,34 @@ namespace MelonUI.Base
 
             return arr;
         }
-        public unsafe void WriteBuffer(int x, int y, ConsoleBuffer source, bool respectBackground = true)
+        public void WriteBuffer(int x, int y, ConsoleBuffer source, bool respectBackground = true)
         {
-            int startX = Math.Max(0, x);
-            int startY = Math.Max(0, y);
-            int endX = Math.Min(Width, x + source.Width);
-            int endY = Math.Min(Height, y + source.Height);
+            ArgumentNullException.ThrowIfNull(source);
+            int startX = (int)Math.Max(0L, x), startY = (int)Math.Max(0L, y);
+            int endX = (int)Math.Min(Width, (long)x + source.Width), endY = (int)Math.Min(Height, (long)y + source.Height);
             if (startX >= endX || startY >= endY) return;
-            // Get direct access to the underlying arrays
-            fixed (ConsolePixel* destPtr = &buffer[0])
-            fixed (ConsolePixel* sourcePtr = &source.buffer[0])
-            {
-                int width = endX - startX;
-                int sourceWidth = source.Width;
-                int destWidth = Width;
-                if (respectBackground)
+            for (int row = startY; row < endY; row++)
+                for (int column = startX; column < endX; column++)
                 {
-                    // Direct memory copy for entire rows when possible
-                    if (startX == 0 && width == sourceWidth)
-                    {
-                        int bytesToCopy = width * sizeof(ConsolePixel);
-                        for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
-                        {
-                            Buffer.MemoryCopy(
-                                sourcePtr + (sy * sourceWidth),
-                                destPtr + (ty * destWidth),
-                                bytesToCopy,
-                                bytesToCopy);
-                        }
-                    }
-                    else
-                    {
-                        // Process multiple pixels at once using pointer arithmetic
-                        for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
-                        {
-                            ConsolePixel* srcRow = sourcePtr + (sy * sourceWidth) + (startX - x);
-                            ConsolePixel* destRow = destPtr + (ty * destWidth) + startX;
-                            // Unroll the loop for better performance
-                            int i = 0;
-                            int widthMinus4 = width - 4;
-                            for (; i < widthMinus4; i += 4)
-                            {
-                                destRow[i] = srcRow[i];
-                                destRow[i + 1] = srcRow[i + 1];
-                                destRow[i + 2] = srcRow[i + 2];
-                                destRow[i + 3] = srcRow[i + 3];
-                            }
-                            // Handle remaining pixels
-                            for (; i < width; i++)
-                            {
-                                destRow[i] = srcRow[i];
-                            }
-                        }
-                    }
+                    var pixel = source[row - y, column - x];
+                    // OpenGL readback uses the raw packed channels rather than the text/color layout.
+                    if (pixel.Character == '\uffff') { this[row, column] = pixel; continue; }
+                    if (!respectBackground && pixel.Background.A == 0 && pixel.Foreground.A == 0) continue;
+                    var underneath = this[row, column];
+                    if (pixel.Background.A == 0) pixel.BackgroundARGB = underneath.BackgroundARGB;
+                    else if (pixel.Background.A < 255) pixel.Background = Blend(pixel.Background, underneath.Background);
+                    if (pixel.Foreground.A is > 0 and < 255) pixel.Foreground = Blend(pixel.Foreground, pixel.Background);
+                    this[row, column] = pixel;
                 }
-                else
-                {
-                    // Optimize the transparency check path
-                    for (int ty = startY, sy = startY - y; ty < endY; ty++, sy++)
-                    {
-                        ConsolePixel* srcRow = sourcePtr + (sy * sourceWidth) + (startX - x);
-                        ConsolePixel* destRow = destPtr + (ty * destWidth) + startX;
-                        int i = 0;
-                        int widthMinus4 = width - 4;
-                        for (; i < width; i++)
-                        {
-                            var sourcePixel = srcRow[i];
-                            if (sourcePixel.Background.A != 0 || sourcePixel.Foreground.A != 0)
-                            {
-                                destRow[i] = sourcePixel;
-                            }
-                        }
-                    }
-                }
-            }
+        }
+
+        private static Color Blend(Color foreground, Color background)
+        {
+            int alpha = foreground.A;
+            return Color.FromArgb(255,
+                (foreground.R * alpha + background.R * (255 - alpha)) / 255,
+                (foreground.G * alpha + background.G * (255 - alpha)) / 255,
+                (foreground.B * alpha + background.B * (255 - alpha)) / 255);
         }
 
         public void FillRect(int x, int y, int width, int height, char c, Color foreground, Color background)
@@ -466,7 +421,7 @@ namespace MelonUI.Base
             {
                 StringBuilder screenBuilder = new StringBuilder();
 
-                for (int y = 0; y < Height - 1; y++)
+                for (int y = 0; y < Height; y++)
                 {
                     StringBuilder lineBuilder = new StringBuilder();
                     bool skipNext = false;
@@ -481,7 +436,8 @@ namespace MelonUI.Base
 
                         var pixel = this[y, x];
                         char ch = pixel.Character == '\0' ? ' ' : pixel.Character;
-                        string charStr = ch.ToString();
+                        string charStr = char.IsHighSurrogate(ch) && x + 1 < Width && char.IsLowSurrogate(this[y, x + 1].Character)
+                            ? new string([ch, this[y, x + 1].Character]) : char.IsSurrogate(ch) ? "\uFFFD" : ch.ToString();
 
                         if (pixel.Foreground.A == 0 && pixel.Background.A == 0)
                         {
@@ -505,7 +461,8 @@ namespace MelonUI.Base
                         }
                     }
 
-                    screenBuilder.AppendLine(lineBuilder.ToString());
+                    screenBuilder.Append(lineBuilder);
+                    if (y < Height - 1) screenBuilder.AppendLine();
                 }
 
                 output.Write(screenBuilder.ToString());
@@ -516,6 +473,7 @@ namespace MelonUI.Base
             catch (Exception)
             {
                 output.Flush();
+                throw;
             }
         }
 
@@ -530,7 +488,7 @@ namespace MelonUI.Base
             {
                 StringBuilder screenBuilder = new StringBuilder();
 
-                for (int y = 0; y < Height - 1; y++)
+                for (int y = 0; y < Height; y++)
                 {
                     StringBuilder lineBuilder = new StringBuilder();
                     bool skipNext = false;
@@ -544,8 +502,9 @@ namespace MelonUI.Base
                         }
 
                         var pixel = this[y, x];
-                        char ch = pixel.Character;
-                        string charStr = ch.ToString();
+                        char ch = pixel.Character == '\0' ? ' ' : pixel.Character;
+                        string charStr = char.IsHighSurrogate(ch) && x + 1 < Width && char.IsLowSurrogate(this[y, x + 1].Character)
+                            ? new string([ch, this[y, x + 1].Character]) : char.IsSurrogate(ch) ? "\uFFFD" : ch.ToString();
 
                         if (pixel.Foreground.A == 0 && pixel.Background.A == 0)
                         {
@@ -580,7 +539,7 @@ namespace MelonUI.Base
             }
             catch (Exception)
             {
-                return "";
+                throw;
             }
         }
     }

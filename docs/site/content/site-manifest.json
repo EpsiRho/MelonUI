@@ -1,0 +1,346 @@
+{
+  "pages": [
+    {
+      "slug": "introduction",
+      "route": "",
+      "title": "MelonUI"
+    },
+    {
+      "slug": "quick-start",
+      "route": "quick-start",
+      "title": "Quick Start"
+    },
+    {
+      "slug": "controls",
+      "route": "controls",
+      "title": "Controls Overview"
+    },
+    {
+      "slug": "layout",
+      "route": "layout",
+      "title": "Layout and Styling"
+    },
+    {
+      "slug": "uielement",
+      "route": "uielement",
+      "title": "UIElement"
+    },
+    {
+      "slug": "ownership",
+      "route": "ownership",
+      "title": "Managing Elements"
+    },
+    {
+      "slug": "window",
+      "route": "window",
+      "title": "ConsoleWindowManager"
+    },
+    {
+      "slug": "focus",
+      "route": "focus",
+      "title": "Focus and Keyboard Controls"
+    },
+    {
+      "slug": "popups",
+      "route": "popups",
+      "title": "Popups and Dialogs"
+    },
+    {
+      "slug": "mxml",
+      "route": "mxml",
+      "title": "MXML Guide"
+    },
+    {
+      "slug": "data-binding",
+      "route": "data-binding",
+      "title": "Data Binding"
+    },
+    {
+      "slug": "mxml-actions",
+      "route": "mxml-actions",
+      "title": "MXML Actions"
+    },
+    {
+      "slug": "custom-controls",
+      "route": "custom-controls",
+      "title": "Creating Custom Controls"
+    },
+    {
+      "slug": "generator",
+      "route": "generator",
+      "title": "Binding Generator"
+    },
+    {
+      "slug": "consolebuffer",
+      "route": "consolebuffer",
+      "title": "ConsoleBuffer"
+    },
+    {
+      "slug": "diagnostics",
+      "route": "diagnostics",
+      "title": "Diagnostics and Troubleshooting"
+    },
+    {
+      "slug": "build-release",
+      "route": "build-release",
+      "title": "Building MelonUI"
+    },
+    {
+      "slug": "shaders",
+      "route": "shaders",
+      "title": "Optional Shader Controls"
+    },
+    {
+      "slug": "muipage",
+      "route": "controls/muipage",
+      "title": "MUIPage"
+    },
+    {
+      "slug": "textblock",
+      "route": "controls/textblock",
+      "title": "TextBlock"
+    },
+    {
+      "slug": "textbox",
+      "route": "controls/textbox",
+      "title": "TextBox"
+    },
+    {
+      "slug": "button",
+      "route": "controls/button",
+      "title": "Button"
+    },
+    {
+      "slug": "buttonpanel",
+      "route": "controls/buttonpanel",
+      "title": "ButtonPanel"
+    },
+    {
+      "slug": "optionsmenu",
+      "route": "controls/optionsmenu",
+      "title": "OptionsMenu"
+    },
+    {
+      "slug": "overflowmenu",
+      "route": "controls/overflowmenu",
+      "title": "OverflowMenu"
+    },
+    {
+      "slug": "colorpicker",
+      "route": "controls/colorpicker",
+      "title": "ColorPicker"
+    },
+    {
+      "slug": "rgbcolorpicker",
+      "route": "controls/rgbcolorpicker",
+      "title": "RgbColorPicker"
+    },
+    {
+      "slug": "filepicker",
+      "route": "controls/filepicker",
+      "title": "FilePicker"
+    },
+    {
+      "slug": "progressbar",
+      "route": "controls/progressbar",
+      "title": "ProgressBar"
+    },
+    {
+      "slug": "worklog",
+      "route": "controls/worklog",
+      "title": "WorkLog"
+    },
+    {
+      "slug": "waveform",
+      "route": "controls/waveform",
+      "title": "Waveform"
+    },
+    {
+      "slug": "line",
+      "route": "controls/line",
+      "title": "Line"
+    },
+    {
+      "slug": "fpscounter",
+      "route": "controls/fpscounter",
+      "title": "FPSCounter"
+    },
+    {
+      "slug": "gridcontainer",
+      "route": "controls/gridcontainer",
+      "title": "GridContainer"
+    },
+    {
+      "slug": "queuecontainer",
+      "route": "controls/queuecontainer",
+      "title": "QueueContainer"
+    },
+    {
+      "slug": "api-lockedlist-1",
+      "route": "api/lockedlist",
+      "title": "LockedList"
+    },
+    {
+      "slug": "api-melonui-attributes-bindingattribute",
+      "route": "api/bindingattribute",
+      "title": "BindingAttribute"
+    },
+    {
+      "slug": "api-melonui-base-binding",
+      "route": "api/binding",
+      "title": "Binding"
+    },
+    {
+      "slug": "api-melonui-base-bindingmode",
+      "route": "api/bindingmode",
+      "title": "BindingMode"
+    },
+    {
+      "slug": "api-melonui-base-bindingstore",
+      "route": "api/bindingstore",
+      "title": "BindingStore"
+    },
+    {
+      "slug": "api-melonui-base-compilermessage",
+      "route": "api/compilermessage",
+      "title": "CompilerMessage"
+    },
+    {
+      "slug": "api-melonui-base-consolepixel",
+      "route": "api/consolepixel",
+      "title": "ConsolePixel"
+    },
+    {
+      "slug": "api-melonui-base-elementcollection",
+      "route": "api/elementcollection",
+      "title": "ElementCollection"
+    },
+    {
+      "slug": "api-melonui-base-ibindinghost",
+      "route": "api/ibindinghost",
+      "title": "IBindingHost"
+    },
+    {
+      "slug": "api-melonui-base-keyboardcontrol",
+      "route": "api/keyboardcontrol",
+      "title": "KeyboardControl"
+    },
+    {
+      "slug": "api-melonui-default-filepickermode",
+      "route": "api/filepickermode",
+      "title": "FilePickerMode"
+    },
+    {
+      "slug": "api-melonui-default-menuitem",
+      "route": "api/menuitem",
+      "title": "MenuItem"
+    },
+    {
+      "slug": "api-melonui-default-progressbar-progressbarstyle",
+      "route": "api/progressbarstyle",
+      "title": "ProgressBarStyle"
+    },
+    {
+      "slug": "api-melonui-default-workitem",
+      "route": "api/workitem",
+      "title": "WorkItem"
+    },
+    {
+      "slug": "api-melonui-enums-alignment",
+      "route": "api/alignment",
+      "title": "Alignment"
+    },
+    {
+      "slug": "api-melonui-enums-direction",
+      "route": "api/direction",
+      "title": "Direction"
+    },
+    {
+      "slug": "api-melonui-enums-easefunction",
+      "route": "api/easefunction",
+      "title": "EaseFunction"
+    },
+    {
+      "slug": "api-melonui-enums-messageseverity",
+      "route": "api/messageseverity",
+      "title": "MessageSeverity"
+    },
+    {
+      "slug": "api-melonui-enums-workstatus",
+      "route": "api/workstatus",
+      "title": "WorkStatus"
+    },
+    {
+      "slug": "api-melonui-helpers-coloredstringparser",
+      "route": "api/coloredstringparser",
+      "title": "ColoredStringParser"
+    },
+    {
+      "slug": "api-melonui-helpers-paramparser",
+      "route": "api/paramparser",
+      "title": "ParamParser"
+    },
+    {
+      "slug": "api-melonui-managers-popuphandle",
+      "route": "api/popuphandle",
+      "title": "PopupHandle"
+    },
+    {
+      "slug": "api-melonui-managers-uiexceptioneventargs",
+      "route": "api/uiexceptioneventargs",
+      "title": "UiExceptionEventArgs"
+    },
+    {
+      "slug": "api-melonui-managers-uiupdateeventargs",
+      "route": "api/uiupdateeventargs",
+      "title": "UiUpdateEventArgs"
+    },
+    {
+      "slug": "api-melonui-markup-mxmlcompileroptions",
+      "route": "api/mxmlcompileroptions",
+      "title": "MxmlCompilerOptions"
+    },
+    {
+      "slug": "api-unixrenderer",
+      "route": "api/unixrenderer",
+      "title": "UnixRenderer"
+    },
+    {
+      "slug": "api-win32renderer",
+      "route": "api/win32renderer",
+      "title": "Win32Renderer"
+    },
+    {
+      "slug": "api-win32renderer-console-screen-buffer-info",
+      "route": "api/console_screen_buffer_info",
+      "title": "CONSOLE_SCREEN_BUFFER_INFO"
+    },
+    {
+      "slug": "api-win32renderer-coord",
+      "route": "api/coord",
+      "title": "COORD"
+    },
+    {
+      "slug": "api-win32renderer-rect",
+      "route": "api/rect",
+      "title": "RECT"
+    },
+    {
+      "slug": "api-win32renderer-small-rect",
+      "route": "api/small_rect",
+      "title": "SMALL_RECT"
+    },
+    {
+      "slug": "api-win32renderer-windowinfo",
+      "route": "api/windowinfo",
+      "title": "WINDOWINFO"
+    },
+    {
+      "slug": "api",
+      "route": "api",
+      "title": "API Reference"
+    }
+  ],
+  "controls": 17,
+  "apiTypes": 52
+}
