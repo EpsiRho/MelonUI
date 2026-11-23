@@ -1,7 +1,5 @@
 # MelonUI
-
-A .NET 10 console UI library with C# composition, MXML 1.0 markup and generated bindable properties.
-MIT licensed. Local package version: **1.0.0**. The binding analyzer targets **netstandard2.0**.
+Powerful  CLIs in C# with a fast renderer, simple built in elements for quick UI building, easy to build on UIElement base class for building custom elements, and a custom XML based markup language (MXML) for building CLIs. Built for .NET 10.
 
 - `MelonUI` is the core library. 
 - `MelonUI.Shaders` is an optional OpenGL/Windows Direct3D extension (Windows Only).
@@ -52,6 +50,4 @@ MXML allows you to define a MUIPage in XML style markup format:
 
 By default, Tab/Shift+Tab changes focus, Alt+arrows moves spatially. This allows users to select elements on a page and give control to them. For example, moving within an OptionsMenu to navigate a settings menu, then Alt+Arrow to switch to another control hosting page navigation.
 
-## Documentation website
-
-See [Documentation](https://epsirho.github.io/MelonUI/) for more info
+See [Documentation](https://epsirho.com/MelonUI/) for more info
