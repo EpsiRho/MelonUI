@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IncludeShaderTests Condition="'$(IncludeShaderTests)' == '' and '$(OS)' == 'Windows_NT'">true</IncludeShaderTests>
+    <DefineConstants Condition="'$(IncludeShaderTests)' == 'true'">$(DefineConstants);MELONUI_GPU_TESTS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\MelonUI\MelonUI.csproj" />
+    <ProjectReference Include="..\MelonUI.Shaders\MelonUI.Shaders.csproj" Condition="'$(IncludeShaderTests)' == 'true'" />
+    <ProjectReference Include="..\MelonUIBindingGenerator\MelonUIBindingGenerator.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(IncludeShaderTests)' != 'true'">
+    <Compile Remove="HardwareTests.cs" />
+    <Compile Include="..\MelonUI.Shaders\ShaderFrameExchange.cs" Link="ShaderFrameExchange.cs" />
+  </ItemGroup>
+</Project>

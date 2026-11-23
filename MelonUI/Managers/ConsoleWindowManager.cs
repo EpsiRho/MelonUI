@@ -1,763 +1,491 @@
-﻿using MelonUI.Base;
-using MelonUI.Default;
-using MelonUI.Enums;
-using SixLabors.ImageSharp.ColorSpaces;
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Linq;
+using MelonUI.Base;
+using MelonUI.Enums;
 
-namespace MelonUI.Managers
+namespace MelonUI.Managers;
+
+/// <summary>Owns a terminal UI, its element tree, and the loop that updates it.</summary>
+public class ConsoleWindowManager : IAsyncDisposable
 {
-    public class ConsoleWindowManager
+    private sealed record UiWork(Action Action, TaskCompletionSource? Completion);
+    private readonly object _lifetime = new();
+    private readonly ConcurrentQueue<UiWork> _work = new();
+    private readonly AutoResetEvent _wake = new(false);
+    private readonly IConsoleTerminal _terminal;
+    private readonly Dictionary<UIElement, ConsoleBuffer> _buffers = new();
+    private readonly List<KeyboardControl> _keyboardControls = new();
+    private readonly List<PopupHandle> _popups = new();
+    private PopupHandle? _lastModal;
+    private CancellationTokenSource? _stop;
+    private Task? _run;
+    private Task? _dispose;
+    private volatile bool _isRunning;
+    private volatile bool _isDisposed;
+    private int _uiThread;
+    private string _title = "";
+    private string? _appliedTitle;
+    private int _targetFrameRate = 60;
+    private bool _platformRenderer = true;
+    private long _renderVersion;
+    internal void RequestRender() => _renderVersion++;
+
+    public ConsoleWindowManager() : this(new ConsoleTerminal()) { }
+    internal ConsoleWindowManager(IConsoleTerminal terminal)
     {
-        public List<UIElement> RootElements = new();
-        public UIElement FocusedElement;
-        private ConsoleBuffer MainBuffer;
-        private ConsoleBuffer SCBuffer;
-        public event EventHandler FrameRendered;
-        private Dictionary<UIElement, ConsoleBuffer> BufferCache = new();
-        private List<KeyboardControl> _KeyboardControls = new List<KeyboardControl>();
-        public string Title = "";
-        public string Status = "";
-        private bool IsAltHeld = false;
-        public bool EnableSystemFocusControls = true;
-        public bool EnableGlobalControls = true;
-        public bool EnableTitleBar = false;
-        public bool IsManaged { get { return IsRendererActive && IsControllerActive; } }
-        public bool IsRendererActive;
-        public bool IsControllerActive;
-        public bool UsePlatformSpecificRenderer = true;
-        public int HighestZ = 0;
-        public Color TitleForeground { get; set; } = Color.White;
-        public Color TitleBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
-        public Color StatusForeground { get; set; } = Color.White;
-        public Color StatusBackground { get; set; } = Color.FromArgb(0, 0, 0, 0);
-        StreamWriter output { get; set; }
+        _terminal = terminal;
+        Elements = new ElementCollection(this);
+    }
 
-        public ConsoleWindowManager()
+    public ElementCollection Elements { get; }
+    public UIElement? FocusedElement { get; private set; }
+    public bool IsRunning => _isRunning;
+    public bool IsDisposed => _isDisposed;
+    internal bool IsStopping => _stop?.IsCancellationRequested == true || _isDisposed || _dispose is not null;
+    public long FrameNumber { get; private set; }
+    public int ViewportWidth { get; private set; }
+    public int ViewportHeight { get; private set; }
+    internal bool IsCapturing { get; private set; }
+    public bool CheckAccess() => !_isRunning || Environment.CurrentManagedThreadId == _uiThread;
+    public bool EnableSystemFocusControls { get; set; } = true;
+    public bool EnableGlobalControls { get; set; } = true;
+
+    /// <summary>The requested console-window/terminal title. Does not draw inside the UI.</summary>
+    public string Title
+    {
+        get => _title;
+        set { VerifyAccess(); _title = value ?? ""; }
+    }
+
+    public int TargetFrameRate
+    {
+        get => _targetFrameRate;
+        set
         {
-            Console.CursorVisible = false;
-            Console.OutputEncoding = Encoding.UTF8;
-            int bufferSize = 65535;
-            output = new StreamWriter(
-              Console.OpenStandardOutput(),
-              bufferSize: bufferSize);
-            UpdateBufferSize();
+            VerifyAccess();
+            if (value is < 1 or > 1000) throw new ArgumentOutOfRangeException(nameof(value), "Use a frame rate from 1 to 1000.");
+            _targetFrameRate = value;
         }
+    }
 
-        public string Screenshot(bool KeepColor)
+    public bool UsePlatformSpecificRenderer
+    {
+        get => _platformRenderer;
+        set { VerifyAccess(); if (_platformRenderer != value) { _platformRenderer = value; RequestRender(); } }
+    }
+
+    public event EventHandler<UiUpdateEventArgs>? Updating;
+    public event EventHandler? FrameRendered;
+    public event EventHandler<UiExceptionEventArgs>? UnhandledException;
+
+    internal void VerifyAccess()
+    {
+        ObjectDisposedException.ThrowIf(_isDisposed, this);
+        if (!CheckAccess()) throw new InvalidOperationException("Use Post or InvokeAsync to update attached UI from a background thread.");
+    }
+
+    /// <summary>Runs until stopped or cancelled, including terminal restoration and worker shutdown.</summary>
+    public Task RunAsync(CancellationToken cancellationToken = default)
+    {
+        lock (_lifetime)
         {
-            try
-            {
-                if (SCBuffer.Width != Console.WindowWidth || SCBuffer.Height != Console.WindowHeight)
-                {
-                    Parallel.ForEach(RootElements, (element) =>
-                    {
-                        element.NeedsRecalculation = true;
-                    });
-                }
-
-                int width = Math.Max(1, Console.WindowWidth);
-                int height = Math.Max(1, Console.WindowHeight);
-                if (SCBuffer == null)
-                {
-                    SCBuffer = new ConsoleBuffer(width, height);
-                }
-                else
-                {
-                    SCBuffer.Resize(width, height);
-                }
-
-                // Draw title and status
-                int bumpY = 0;
-                if (EnableTitleBar)
-                {
-                    bumpY = 2;
-                    for (int i = 0; i < Title.Length && i < SCBuffer.Width; i++)
-                        SCBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
-                    for (int i = 0; i < Status.Length && i < SCBuffer.Width; i++)
-                        SCBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
-                }
-
-                // Calculate layouts and render elements
-                var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();
-                var delElms = RootElements.Where(e => e.RenderThreadDeleteMe);
-                foreach (var item in delElms)
-                {
-                    RemoveElement(item);
-                }
-                var visibleElms = RootElements.Where(x => x.IsVisible).ToList();
-                Parallel.ForEach(visibleElms, (element) =>
-                {
-                    ConsoleBuffer elementBuffer = null;
-
-                    if (element.NeedsRecalculation)
-                    {
-                        element.CalculateLayout(0, bumpY, SCBuffer.Width, SCBuffer.Height - bumpY);
-                        elementBuffer = element.Render();
-
-                        if (element.EnableCaching)
-                        {
-                            lock (BufferCache)
-                            {
-                                BufferCache[element] = elementBuffer;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        bool bufferFound = false;
-                        if (element.EnableCaching)
-                        {
-                            lock (BufferCache)
-                            {
-                                if (BufferCache.TryGetValue(element, out elementBuffer))
-                                {
-                                    bufferFound = true;
-                                }
-                            }
-                        }
-
-                        if (!bufferFound)
-                        {
-                            element.CalculateLayout(0, bumpY, SCBuffer.Width, SCBuffer.Height - bumpY);
-                            elementBuffer = element.Render();
-
-                            if (element.EnableCaching)
-                            {
-                                lock (BufferCache)
-                                {
-                                    BufferCache[element] = elementBuffer;
-                                }
-                            }
-                        }
-                    }
-
-                    objectBuffers.Add((elementBuffer, element));
-                });
-
-                var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
-                foreach (var element in lst)
-                {
-                    SCBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
-                };
-
-                // Screenshot ;P
-                var screenshot = SCBuffer.Screenshot(KeepColor);
-                return screenshot;
-            }
-            catch (Exception e)
-            {
-                return e.Message;
-            }
+            ObjectDisposedException.ThrowIf(_isDisposed || _dispose is not null, this);
+            if (_isRunning) throw new InvalidOperationException("This window is already running.");
+            if (cancellationToken.IsCancellationRequested) return Task.CompletedTask;
+            _stop?.Dispose();
+            _stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _isRunning = true;
+            _run = Task.Factory.StartNew(() => RunLoop(_stop.Token), CancellationToken.None,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            return _run;
         }
+    }
 
-        private UIElement FindNearestElement(UIElement current, Direction direction)
+    public void Run(CancellationToken cancellationToken = default) => RunAsync(cancellationToken).GetAwaiter().GetResult();
+
+    public void Stop()
+    {
+        lock (_lifetime)
         {
-            var elms = GetAllFocusableChildren(RootElements);
-            if (current == null || elms.Count <= 1) return null;
+            if (!_isRunning) return;
+            _stop!.Cancel();
+            _wake.Set();
+        }
+    }
 
-            // Get the center point of the current element
-            int currentCenterX = current.ActualX + (current.ActualWidth / 2);
-            int currentCenterY = current.ActualY + (current.ActualHeight / 2);
+    /// <summary>Queues one short UI action. Available while RunAsync is active.</summary>
+    public void Post(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        Enqueue(new UiWork(action, null));
+    }
 
-            UIElement nearest = null;
-            double nearestDistance = double.MaxValue;
-            double bestDirectionalDistance = double.MaxValue;
+    /// <summary>Completes after the action runs, or faults with its exception.</summary>
+    public Task InvokeAsync(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        if (_isRunning && CheckAccess())
+        {
+            try { action(); return Task.CompletedTask; }
+            catch (Exception ex) { return Task.FromException(ex); }
+        }
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Enqueue(new UiWork(action, completion));
+        return completion.Task;
+    }
 
-            foreach (var element in elms)
+    private void Enqueue(UiWork work)
+    {
+        lock (_lifetime)
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed || _dispose is not null, this);
+            if (!_isRunning || _stop!.IsCancellationRequested)
+                throw new InvalidOperationException("UI work can only be queued while RunAsync is active and not stopping.");
+            _work.Enqueue(work);
+            _wake.Set();
+        }
+    }
+
+    private void RunLoop(CancellationToken cancellationToken)
+    {
+        _uiThread = Environment.CurrentManagedThreadId;
+        try
+        {
+            _terminal.Begin();
+            _appliedTitle = null;
+            var clock = Stopwatch.StartNew();
+            var previousUpdate = TimeSpan.Zero;
+            var nextFrame = TimeSpan.Zero;
+            long presentedVersion = -1;
+            (int Width, int Height) presentedSize = (-1, -1);
+            while (!cancellationToken.IsCancellationRequested)
             {
-                if (element == current) continue;
-
-                // Get the center point of the candidate element
-                int elementCenterX = element.ActualX + (element.ActualWidth / 2);
-                int elementCenterY = element.ActualY + (element.ActualHeight / 2);
-
-                // Calculate the distance and angle to this element
-                double distance = Math.Sqrt(
-                    Math.Pow(elementCenterX - currentCenterX, 2) +
-                    Math.Pow(elementCenterY - currentCenterY, 2)
-                );
-
-                // Check if this element is in the correct direction
-                bool isInDirection = false;
-                double directionDistance = 0;
-
-                switch (direction)
+                for (var count = 0; count < 256 && !cancellationToken.IsCancellationRequested && _work.TryDequeue(out var work); count++)
                 {
-                    case Direction.Up:
-                        if (elementCenterY < currentCenterY)
-                        {
-                            isInDirection = true;
-                            directionDistance = currentCenterY - elementCenterY;
-                        }
-                        break;
-                    case Direction.Down:
-                        if (elementCenterY > currentCenterY)
-                        {
-                            isInDirection = true;
-                            directionDistance = elementCenterY - currentCenterY;
-                        }
-                        break;
-                    case Direction.Left:
-                        if (elementCenterX < currentCenterX)
-                        {
-                            isInDirection = true;
-                            directionDistance = currentCenterX - elementCenterX;
-                        }
-                        break;
-                    case Direction.Right:
-                        if (elementCenterX > currentCenterX)
-                        {
-                            isInDirection = true;
-                            directionDistance = elementCenterX - currentCenterX;
-                        }
-                        break;
-                }
-
-                // If this element is in the correct direction, consider it as a candidate
-                if (isInDirection)
-                {
-                    // We prioritize elements that are more directly in the desired direction
-                    // by using a weighted combination of distance and directional alignment
-                    double weightedDistance = distance + (Math.Abs(directionDistance) * 0.8);
-
-                    if (weightedDistance < nearestDistance)
+                    try { work.Action(); work.Completion?.TrySetResult(); }
+                    catch (Exception ex)
                     {
-                        nearestDistance = weightedDistance;
-                        nearest = element;
+                        if (work.Completion is not null) work.Completion.TrySetException(ex);
+                        else ReportException(ex);
                     }
                 }
-            }
-
-            return nearest;
-        }
-
-
-        private void UpdateBufferSize()
-        {
-            try
-            {
-                var sz = Win32Renderer.GetConsoleWindowSize();
-                int width = Math.Max(1, sz.width);
-                int height = Math.Max(1, sz.height);
-
-                if (MainBuffer == null)
+                for (var count = 0; count < 64 && !cancellationToken.IsCancellationRequested && _terminal.TryReadKey(out var key); count++)
                 {
-                    MainBuffer = new ConsoleBuffer(width, height);
+                    try { HandleInput(key); }
+                    catch (Exception ex) { ReportException(ex); }
                 }
-                else
-                {
-                    MainBuffer.Resize(width, height);
-                }
-            }
-            catch (Exception)
-            {
-                // If we can't get console dimensions, create a minimal buffer
-                MainBuffer = new ConsoleBuffer(1, 1);
-            }
-        }
+                if (cancellationToken.IsCancellationRequested) break;
 
-        public void SetTitle(string title) => Title = title;
-        public void SetStatus(string status) => Status = status;
-        public List<UIElement> GetAllFocusableChildren(List<UIElement> elms)
-        {
-            List<UIElement> children = new List<UIElement>();
-            foreach(var elm in elms)
-            {
-                if (elm.ConsiderForFocus && elm.IsVisible)
-                {
-                    children.Add(elm);
-                }
-                children.AddRange(GetAllFocusableChildren(elm.Children));
-            }
-
-            return children;
-        }
-        public void ResetSubChildrenRecalculation(List<UIElement> elms)
-        {
-            foreach (var elm in elms)
-            {
-                if (elm.ConsiderForFocus && elm.IsVisible)
-                {
-                    elm.NeedsRecalculation = true;
-                }
-                ResetSubChildrenRecalculation(elm.Children);
-            }
-        }
-        public void SetSubChildrenParentWindow(List<UIElement> elm)
-        {
-            foreach (var child in elm)
-            {
-                child.ParentWindow = this;
-                SetSubChildrenParentWindow(child.Children);
-            }
-        }
-        public UIElement GetSubChildByGuid(string uid, List<UIElement> elms = null)
-        {
-            if(elms == null)
-            {
-                elms = RootElements;
-            }
-            foreach (var elm in elms)
-            {
-                if (elm.UID == uid)
-                {
-                    return elm;
-                }
-                var check = GetSubChildByGuid(uid, elm.Children);
-                if (check != null)
-                {
-                    return check;
-                }
-            }
-
-            return null;
-        }
-        public UIElement GetSubChildByName(string name, List<UIElement> elms = null)
-        {
-            if (elms == null)
-            {
-                elms = RootElements;
-            }
-            foreach (var elm in elms)
-            {
-                if (elm.Name == name)
-                {
-                    return elm;
-                }
-                var check = GetSubChildByName(name, elm.Children);
-                if (check != null)
-                {
-                    return check;
-                }
-            }
-
-            return null;
-        }
-        public void SetSubZByGuid(int z, string uid, List<UIElement> elms = null)
-        {
-            if(elms == null)
-            {
-                elms = RootElements;
-            }
-            foreach (var elm in elms)
-            {
-                if (elm.UID == uid)
-                {
-                    elm.Z = z;
-                    return;
-                }
-                SetSubZByGuid(z, uid, elm.Children);
-            }
-        }
-        public void AddElement(UIElement element, bool forceFocus = true)
-        {
-            forceFocus = EnableSystemFocusControls ? forceFocus : false;
-            element.ParentWindow = this;
-            SetSubChildrenParentWindow(element.Children);
-            if (FocusedElement == null)
-            {
-                FocusedElement = element;
-                element.IsFocused = true;
-            }
-
-            var focuselms = GetAllFocusableChildren(RootElements);
-            if (element.GetType() == typeof(MUIPage) && forceFocus)
-            {
-                
-                int count = 0;
-                focuselms.AddRange(GetAllFocusableChildren(element.Children));
-                foreach (var elm in focuselms.OrderBy(x => x.Z))
-                {
-                    var focusedItem = GetSubChildByGuid(elm.UID, RootElements);
-                    if(focusedItem == null)
-                    {
-                        focusedItem = GetSubChildByGuid(elm.UID, element.Children);
-                        if(focusedItem == null)
-                        {
-                            continue;
-                        }
-                    }
-                    focusedItem.Z = count;
-                    count++;
-                }
-                element.Z = count;
-                FocusedElement.IsFocused = false;
-                var id = focuselms.OrderByDescending(x => x.Z).FirstOrDefault();
-                if(id == null)
-                {
-                    return;
-                }
-                FocusedElement = GetSubChildByGuid(id.UID, element.Children);
-                if(FocusedElement == null)
-                {
-                    return;
-                }
-                FocusedElement.IsFocused = true;
-                Parallel.ForEach(focuselms, (element) =>
-                {
-                    element.NeedsRecalculation = true;
-                });
-                RootElements.Add(element);
-                if (HighestZ < element.Z)
-                {
-                    HighestZ = focuselms.Count;
-                }
-                return;
-            }
-            else if (forceFocus)
-            {
-                FocusedElement.IsFocused = false;
-                FocusedElement = element;
-                element.IsFocused = true;
-                int count = 0;
-                foreach (var elm in focuselms.OrderBy(x => x.Z))
-                {
-                    elm.Z = count;
-                    count++;
-                }
-                element.Z = count;
-            }
-
-            RootElements.Add(element);
-            if(HighestZ < element.Z)
-            {
-                HighestZ = element.Z;
-            }
-        }
-        public void RemoveElement(UIElement element)
-        {
-            int idx = RootElements.IndexOf(element);
-            if(idx == -1)
-            {
-                return;
-            }
-            RootElements.RemoveAt(idx);
-            if (FocusedElement != null && FocusedElement.Equals(element) && RootElements.Count() >= 1)
-            {
-                FocusedElement = RootElements.OrderByDescending(x=>x.Z).FirstOrDefault();
-                FocusedElement.IsFocused = true;
-            }
-
-            int count = 0;
-            foreach (var elm in RootElements.OrderBy(x => x.Z))
-            {
-                elm.Z = count;
-                count++;
-            }
-
-            if (HighestZ == element.Z)
-            {
-                var item = RootElements.OrderByDescending(e => e.Z).FirstOrDefault();
-                if (item == null)
-                {
-                    HighestZ = 0;
-                }
-            }
-
-        }
-
-        public void Render()
-        {
-            try
-            {
-                if (Win32Renderer.IsSupported && UsePlatformSpecificRenderer)
-                {
-                    var sz = Win32Renderer.GetConsoleWindowSize();
-                    if (MainBuffer.Width != sz.width || MainBuffer.Height != sz.height)
-                    {
-                        ResetSubChildrenRecalculation(RootElements);
-                    }
-                }
-                else
-                {
-                    if (MainBuffer.Width != Console.WindowWidth || MainBuffer.Height != Console.WindowHeight)
-                    {
-                        ResetSubChildrenRecalculation(RootElements);
-                    }
-                }
-                UpdateBufferSize();
-
-                // Draw title and status
-                int bumpY = 0;
-                if (EnableTitleBar)
-                {
-                    bumpY = 2;
-                    for (int i = 0; i < Title.Length && i < MainBuffer.Width; i++)
-                        MainBuffer.SetPixel(i, 0, Title[i], TitleForeground, TitleBackground);
-                    for (int i = 0; i < Status.Length && i < MainBuffer.Width; i++)
-                        MainBuffer.SetPixel(i, 1, Status[i], StatusForeground, StatusBackground);
-                }
-
-                // Calculate layouts and render elements
-                var objectBuffers = new ConcurrentBag<(ConsoleBuffer buffer, UIElement element)>();
-                var delElms = RootElements.Where(e => e.RenderThreadDeleteMe);
-                foreach (var item in delElms)
-                {
-                    RemoveElement(item);
-                }
-                var visibleElms = RootElements.Where(x => x.IsVisible).ToList();
-                //Parallel.ForEach(visibleElms, (element) => (Parallel ForEach was causing Memory Access Violation Exceptions, and perf gain was minimal so.)
-                foreach (var element in visibleElms)
-                {
-                    ConsoleBuffer elementBuffer = null;
-
-                    if (element.NeedsRecalculation)
-                    {
-                        element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
-                        elementBuffer = element.Render();
-
-                        if (element.EnableCaching)
-                        {
-                            lock (BufferCache)
-                            {
-                                BufferCache[element] = elementBuffer;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        element.CalculateLayout(0, bumpY, MainBuffer.Width, MainBuffer.Height - bumpY);
-                        bool bufferFound = false;
-                        if (element.EnableCaching)
-                        {
-                            lock (BufferCache)
-                            {
-                                if (BufferCache.TryGetValue(element, out elementBuffer))
-                                {
-                                    bufferFound = true;
-                                }
-                            }
-                        }
-
-                        if (!bufferFound)
-                        {
-                            elementBuffer = element.Render();
-
-                            if (element.EnableCaching)
-                            {
-                                lock (BufferCache)
-                                {
-                                    BufferCache[element] = elementBuffer;
-                                }
-                            }
-                        }
-                    }
-
-                    objectBuffers.Add((elementBuffer, element));
-                };
-
-                var lst = objectBuffers.OrderBy(e => e.element.Z).ToList();
-                foreach (var element in lst)
-                {
-                    MainBuffer.WriteBuffer(element.element.ActualX, element.element.ActualY, element.buffer, element.element.RespectBackgroundOnDraw);
-                };
-
-
-                // Render the main buffer to console
-                MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
-                FrameRendered?.Invoke(this, EventArgs.Empty);
-            }
-            catch (Exception e)
-            {
-                Debug.WriteLine(e.Message);
-                MainBuffer.WriteStringWrapped(0,0,e.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
-                MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
-                FrameRendered?.Invoke(this, EventArgs.Empty);
-            }
-        }
-
-        public void MoveFocus(UIElement elm)
-        {
-            if (elm != null)
-            {
-                var elms = GetAllFocusableChildren(RootElements).OrderBy(x => x.Z).ToList();
-                int count = 0;
-
-                var focusedItem = GetSubChildByGuid(elm.UID, RootElements);
-                if(focusedItem == null)
-                {
-                    return;
-                }
-                focusedItem.Z = HighestZ + 1;
-                foreach (var e in elms.OrderBy(x => x.Z))
-                {
-                    //var child = GetSubChildByGuid(RootElements, elm.UID);
-                    //if (child == null)
-                    //{
-                    //    return;
-                    //}
-                   // child.Z = count;
-                    SetSubZByGuid(count, e.UID);
-                    count++;
-                }
-                if(FocusedElement != null)
-                {
-                    FocusedElement.IsFocused = false;
-                }
-                FocusedElement = focusedItem;
-                FocusedElement.IsFocused = true;
-
-            }
-        }
-        public void MoveFocus(Direction direction)
-        {
-            if(direction == Direction.Any)
-            {
-                var elms = GetAllFocusableChildren(RootElements).OrderBy(x => x.Z).ToList();
-                int count = 0;
-
-                int idx = elms.IndexOf(FocusedElement) + 1;
-                idx = idx > elms.Count - 1 ? 0 : idx;
-
-                var focusedItem = GetSubChildByGuid(elms[idx].UID, RootElements);
-                MoveFocus(focusedItem);
-                return;
-            }
-
-            var nextElement = FindNearestElement(FocusedElement, direction);
-            MoveFocus(nextElement);
-
-
-        }
-
-        public void HandleInput()
-        {
-            if (Console.KeyAvailable && EnableGlobalControls)
-            {
-                var key = Console.ReadKey(true);
-
-                if (key.Modifiers == ConsoleModifiers.Alt)
-                {
-                    IsAltHeld = true;
-                }
-                else
-                {
-                    IsAltHeld = false;
-                }
-
-                if (IsAltHeld && EnableSystemFocusControls)
-                {
-                    switch (key.Key)
-                    {
-                        case ConsoleKey.UpArrow:
-                            MoveFocus(Direction.Up);
-                            break;
-                        case ConsoleKey.DownArrow:
-                            MoveFocus(Direction.Down);
-                            break;
-                        case ConsoleKey.LeftArrow:
-                            MoveFocus(Direction.Left);
-                            break;
-                        case ConsoleKey.RightArrow:
-                            MoveFocus(Direction.Right);
-                            break;
-                        case ConsoleKey.Oem3:
-                            MoveFocus(Direction.Any);
-                            break;
-
-                    }
-                }
-                else
-                {
-                    foreach (var control in _KeyboardControls)
-                    {
-                        if (control.Matches(key))
-                        {
-                            control.Action();
-                        }
-                    }
-                    FocusedElement?.HandleKey(key);
-                }
-            }
-            else
-            {
-
-            }
-        }
-        public void RegisterKeyboardControl(ConsoleKey key, Action action, string description,
-            bool requireShift = false, bool requireControl = false, bool requireAlt = false)
-        {
-            _KeyboardControls.Add(new KeyboardControl
-            {
-                Key = key,
-                Action = action,
-                Description = description,
-                RequireShift = requireShift,
-                RequireControl = requireControl,
-                RequireAlt = requireAlt
-            });
-        }
-        public void RegisterKeyboardControl(KeyboardControl keyControl)
-        {
-            _KeyboardControls.Add(keyControl);
-        }
-
-        public virtual IEnumerable<KeyboardControl> GetKeyboardControls()
-        {
-            return _KeyboardControls;
-        }
-
-        public async Task ManageConsole(CancellationToken cancellationToken)
-        {
-            Thread ControllerThread = new Thread(() =>
-            {
-                IsControllerActive = true;
-                while (!cancellationToken.IsCancellationRequested)
+                var now = clock.Elapsed;
+                if (now >= nextFrame)
                 {
                     try
                     {
-                        HandleInput();
+                        Updating?.Invoke(this, new UiUpdateEventArgs(now - previousUpdate));
+                        previousUpdate = now;
+                        if (cancellationToken.IsCancellationRequested) break;
+                        if (_appliedTitle != Title) { _terminal.SetTitle(Title); _appliedTitle = Title; }
+                        var size = _terminal.GetSize();
+                        if (presentedVersion != _renderVersion || size != presentedSize || Elements.Any(e => e.IsVisible && (e.NeedsRecalculation || e.RequiresContinuousRendering)))
+                        {
+                            _terminal.Present(ComposeFrame(size.Width, size.Height), UsePlatformSpecificRenderer);
+                            presentedVersion = _renderVersion; presentedSize = size;
+                            FrameNumber++;
+                            FrameRendered?.Invoke(this, EventArgs.Empty);
+                        }
                     }
-                    catch (Exception ex)
-                    {
-                        //TODO: Logging
-                        Debug.WriteLine(ex.Message);
-                        MainBuffer.WriteStringWrapped(0, 0, ex.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
-                        MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
-                        FrameRendered?.Invoke(this, EventArgs.Empty);
-                    }
-                    Thread.Sleep(16);
+                    catch (Exception ex) { ReportException(ex); }
+                    nextFrame = clock.Elapsed + TimeSpan.FromSeconds(1d / TargetFrameRate);
                 }
-                IsControllerActive = false;
-            });
-            Thread DisplayThread = new Thread(() =>
-            {
-                IsRendererActive = true;
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    try
-                    {
-                        Render();
-                    }
-                    catch (Exception ex)
-                    {
-                        //TODO: Logging
-                        Debug.WriteLine(ex.Message);
-                        MainBuffer.WriteStringWrapped(0, 0, ex.Message, Console.WindowWidth - 2, Color.White, Color.Transparent);
-                        MainBuffer.RenderToConsole(output, UsePlatformSpecificRenderer);
-                        FrameRendered?.Invoke(this, EventArgs.Empty);
-                    }
-                }
-                IsRendererActive = false;
-            });
-            try
-            {
-                DisplayThread.Start();
-                ControllerThread.Start();
-            }
-            catch (OperationCanceledException)
-            {
-
+                var wait = Math.Clamp((nextFrame - clock.Elapsed).TotalMilliseconds, 1, 16);
+                _wake.WaitOne((int)Math.Ceiling(wait));
             }
         }
+        finally
+        {
+            try { _terminal.End(); }
+            finally
+            {
+                lock (_lifetime)
+                {
+                    _isRunning = false;
+                    _uiThread = 0;
+                    while (_work.TryDequeue(out var work)) work.Completion?.TrySetCanceled();
+                }
+            }
+        }
+    }
 
+    private void ReportException(Exception exception)
+    {
+        var args = new UiExceptionEventArgs(exception);
+        UnhandledException?.Invoke(this, args);
+        if (!args.Handled) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(exception).Throw();
+    }
+
+    /// <summary>Captures the same composition used for rendering. Can be used before RunAsync.</summary>
+    public string CaptureText(bool includeColor = false, int? width = null, int? height = null, bool includeSensitive = false)
+    {
+        VerifyAccess();
+        var size = width.HasValue && height.HasValue ? (width.Value, height.Value) : _terminal.GetSize();
+        bool previous = IsCapturing;
+        IsCapturing = !includeSensitive;
+        try { return ComposeFrame(width ?? size.Item1, height ?? size.Item2).Screenshot(includeColor); }
+        finally { IsCapturing = previous; }
+    }
+
+    internal ConsoleBuffer ComposeFrame(int width, int height)
+    {
+        VerifyAccess();
+        if (width < 1 || height < 1) throw new ArgumentOutOfRangeException(nameof(width), "Frame dimensions must be positive.");
+        ViewportWidth = width; ViewportHeight = height;
+        var frame = new ConsoleBuffer(width, height);
+        var roots = Elements.Where(x => x.IsVisible).OrderBy(x => x.Z).ToArray();
+        var changed = new HashSet<UIElement>();
+        foreach (var element in roots)
+        {
+            if (element.IsDisposed || element.ParentWindow != this || !element.IsVisible) continue;
+            var previous = (element.ActualWidth, element.ActualHeight, element.ActualX, element.ActualY);
+            element.CalculateLayout(0, 0, width, height);
+            if (previous != (element.ActualWidth, element.ActualHeight, element.ActualX, element.ActualY)) changed.Add(element);
+        }
+        TreeChanged();
+        var popupRoots = _popups.Where(p => p.IsActive && p.Content.IsVisible).Select(p => p.Content).ToArray();
+        foreach (var element in roots.Except(popupRoots).Concat(popupRoots))
+        {
+            if (element.IsDisposed || element.ParentWindow != this || !element.IsVisible || element.ActualWidth == 0 || element.ActualHeight == 0) continue;
+            if (element.RequiresContinuousRendering || changed.Contains(element) || element.NeedsRecalculation || !_buffers.TryGetValue(element, out var buffer))
+            {
+                buffer = element.Render();
+                if (element.EnableCaching && element.ParentWindow == this) _buffers[element] = buffer;
+            }
+            frame.WriteBuffer(element.ActualX, element.ActualY, buffer, element.RespectBackgroundOnDraw);
+        }
+        return frame;
+    }
+
+    public T? Find<T>(string name) where T : UIElement { VerifyAccess(); return ElementTree.Find<T>(Elements, name); }
+    public UIElement? FindById(string id) { VerifyAccess(); return ElementTree.Descendants(Elements).FirstOrDefault(x => x.UID == id); }
+
+    private UIElement? ModalRoot => _popups.LastOrDefault(p => p.IsActive && p.IsModal &&
+        p.Content.IsEffectivelyVisible && p.Content.IsEffectivelyEnabled)?.Content;
+    private IEnumerable<UIElement> FocusRoots => ModalRoot is { } modal ? [modal] : Elements;
+
+    internal void TreeChanged()
+    {
+        _popups.RemoveAll(p => !p.IsActive);
+        var modal = _popups.LastOrDefault(p => p.IsModal && p.Content.IsEffectivelyVisible && p.Content.IsEffectivelyEnabled);
+        if (!ReferenceEquals(modal, _lastModal))
+        {
+            var previous = _lastModal?.PreviousFocus;
+            _lastModal = modal;
+            if (previous is not null && Focusable(FocusRoots).Contains(previous)) SetFocus(previous);
+        }
+        if (FocusedElement is null || FocusedElement.ParentWindow != this || !FocusedElement.CanFocus ||
+            (ModalRoot is { } root && !FocusedElement.IsWithin(root)) || !Focusable(FocusRoots).Contains(FocusedElement))
+            SetFocus(Focusable(FocusRoots).FirstOrDefault());
+    }
+
+    internal void TreeRemoved(UIElement subtree)
+    {
+        foreach (var element in ElementTree.Descendants([subtree]))
+        {
+            _buffers.Remove(element);
+            element.IsFocused = false;
+            if (ReferenceEquals(FocusedElement, element)) FocusedElement = null;
+        }
+        TreeChanged();
+    }
+
+    private static IEnumerable<UIElement> Focusable(IEnumerable<UIElement> elements)
+    {
+        foreach (var element in elements.OrderBy(e => e.TabIndex))
+        {
+            if (!element.IsEffectivelyVisible || !element.IsEffectivelyEnabled) continue;
+            if (element.CanFocus) yield return element;
+            foreach (var child in Focusable(element.FocusChildren)) yield return child;
+        }
+    }
+
+    public void Focus(UIElement element)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(element);
+        if (element.ParentWindow != this || !element.IsEffectivelyVisible || !element.IsEffectivelyEnabled ||
+            (ModalRoot is { } modal && !element.IsWithin(modal)))
+            throw new InvalidOperationException("Focus requires visible, enabled content within the active focus scope.");
+        var target = Focusable([element]).FirstOrDefault();
+        if (target is not null)
+        {
+            if (!Focusable(FocusRoots).Contains(target)) throw new InvalidOperationException("This element is managed as part of a composite control and is not an independent focus stop.");
+            SetFocus(target);
+        }
+    }
+
+    private void SetFocus(UIElement? element)
+    {
+        if (ReferenceEquals(FocusedElement, element)) return;
+        var previous = FocusedElement;
+        FocusedElement = element;
+        if (previous is { IsDisposed: false }) previous.IsFocused = false;
+        if (element is not null) element.IsFocused = true;
+    }
+
+    public void BringToFront(UIElement element) => Reorder(element, toFront: true);
+    public void SendToBack(UIElement element) => Reorder(element, toFront: false);
+    private void Reorder(UIElement element, bool toFront)
+    {
+        VerifyAccess();
+        if (element.ParentWindow != this) throw new InvalidOperationException("The element belongs to another tree.");
+        var siblings = element.OwnerCollection!.OrderBy(x => x.Z).Where(x => x != element).ToList();
+        if (toFront) siblings.Add(element); else siblings.Insert(0, element);
+        for (var i = 0; i < siblings.Count; i++) siblings[i].Z = i;
+    }
+
+    public PopupHandle ShowPopup(UIElement content, bool isModal = true)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(content);
+        if (!content.IsVisible || !content.IsEnabled) throw new ArgumentException("Popup content must be visible and enabled.", nameof(content));
+        var previousFocus = FocusedElement;
+        Elements.Add(content);
+        BringToFront(content);
+        var popup = new PopupHandle(this, content, previousFocus, isModal);
+        _popups.Add(popup);
+        Focus(content);
+        TreeChanged();
+        return popup;
+    }
+
+    internal void RestorePopupFocus(UIElement? previous)
+    {
+        TreeChanged();
+        if (previous is not null && Focusable(FocusRoots).Contains(previous)) SetFocus(previous);
+    }
+
+    public void RegisterKeyboardControl(ConsoleKey key, Action action, string description,
+        bool requireShift = false, bool requireControl = false, bool requireAlt = false) =>
+        RegisterKeyboardControl(new KeyboardControl
+        {
+            Key = key, Action = action, Description = description,
+            RequireShift = requireShift, RequireControl = requireControl, RequireAlt = requireAlt
+        });
+
+    public void RegisterKeyboardControl(KeyboardControl control)
+    {
+        VerifyAccess();
+        ArgumentNullException.ThrowIfNull(control);
+        _keyboardControls.Add(control);
+    }
+    public bool UnregisterKeyboardControl(KeyboardControl control) { VerifyAccess(); return _keyboardControls.Remove(control); }
+    public IEnumerable<KeyboardControl> GetKeyboardControls() => _keyboardControls.ToArray();
+
+    internal void HandleInput(ConsoleKeyInfo key)
+    {
+        VerifyAccess();
+        if (ViewportWidth > 0 && ViewportHeight > 0)
+            foreach (var root in Elements.ToArray())
+                if (!root.IsDisposed && root.ParentWindow == this) root.CalculateLayout(0, 0, ViewportWidth, ViewportHeight);
+        TreeChanged();
+        if (EnableSystemFocusControls && key.Modifiers.HasFlag(ConsoleModifiers.Alt) &&
+            !key.Modifiers.HasFlag(ConsoleModifiers.Control))
+        {
+            var direction = key.Key switch
+            {
+                ConsoleKey.UpArrow => Direction.Up, ConsoleKey.DownArrow => Direction.Down,
+                ConsoleKey.LeftArrow => Direction.Left, ConsoleKey.RightArrow => Direction.Right,
+                ConsoleKey.Oem3 => Direction.Any, _ => (Direction?)null
+            };
+            if (direction.HasValue) { MoveFocus(direction.Value, key.Modifiers.HasFlag(ConsoleModifiers.Shift)); return; }
+        }
+        var scope = ModalRoot;
+        for (var current = FocusedElement; current is not null; current = current.Parent)
+        {
+            if (current.TryHandleKey(key)) { TreeChanged(); return; }
+            if (ReferenceEquals(current, scope)) break;
+        }
+        if (EnableSystemFocusControls && key.Key == ConsoleKey.Tab && !key.Modifiers.HasFlag(ConsoleModifiers.Alt))
+        {
+            MoveFocus(Direction.Any, key.Modifiers.HasFlag(ConsoleModifiers.Shift));
+            return;
+        }
+        if (scope is not null)
+        {
+            if (key.Key == ConsoleKey.Escape) _popups.Last(p => p.IsActive && p.Content == scope).Close();
+            return; // A modal cannot invoke background window shortcuts.
+        }
+        if (EnableGlobalControls)
+            foreach (var control in _keyboardControls.ToArray())
+                if (control.Matches(key) && control.Action is { } action) { action(); break; }
+        TreeChanged();
+    }
+
+    private void MoveFocus(Direction direction, bool reverse = false)
+    {
+        var elements = Focusable(FocusRoots).ToArray();
+        if (elements.Length == 0) { SetFocus(null); return; }
+        if (direction == Direction.Any || FocusedElement is null)
+        {
+            int current = Array.IndexOf(elements, FocusedElement);
+            int next = current < 0 ? (reverse ? elements.Length - 1 : 0) : (current + (reverse ? -1 : 1) + elements.Length) % elements.Length;
+            SetFocus(elements[next]);
+            return;
+        }
+        var position = FocusedElement.GetAbsolutePosition();
+        double x = position.X + FocusedElement.ActualWidth / 2d;
+        double y = position.Y + FocusedElement.ActualHeight / 2d;
+        var nearest = elements.Where(e => e != FocusedElement).Select(e =>
+        {
+            var point = e.GetAbsolutePosition();
+            double dx = point.X + e.ActualWidth / 2d - x;
+            double dy = point.Y + e.ActualHeight / 2d - y;
+            double primary = direction switch { Direction.Left => -dx, Direction.Right => dx, Direction.Up => -dy, _ => dy };
+            double perpendicular = direction is Direction.Left or Direction.Right ? Math.Abs(dy) : Math.Abs(dx);
+            return (Element: e, Primary: primary, Perpendicular: perpendicular);
+        }).Where(e => e.Primary > 0)
+          .OrderBy(e => e.Perpendicular / e.Primary).ThenBy(e => e.Primary).FirstOrDefault();
+        if (nearest.Element is not null) SetFocus(nearest.Element);
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        lock (_lifetime)
+        {
+            if (_dispose is not null) return new ValueTask(_dispose);
+            if (_isRunning && CheckAccess())
+                throw new InvalidOperationException("Call Stop in UI callbacks and dispose the window after RunAsync completes.");
+            Stop();
+            _dispose = DisposeCoreAsync();
+            return new ValueTask(_dispose);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        Exception? failure = null;
+        try { if (_run is not null) await _run.ConfigureAwait(false); }
+        catch (Exception ex) { failure = ex; }
+        try
+        {
+            foreach (var element in Elements.ToArray())
+            {
+                try { element.Dispose(); }
+                catch (Exception ex) { failure = failure is null ? ex : new AggregateException(failure, ex); }
+            }
+            Elements.Clear();
+            _buffers.Clear();
+            _keyboardControls.Clear();
+            _popups.Clear();
+            Updating = null;
+            FrameRendered = null;
+            UnhandledException = null;
+        }
+        finally
+        {
+            _stop?.Dispose();
+            _wake.Dispose();
+            _isDisposed = true;
+        }
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 }

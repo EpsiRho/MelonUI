@@ -12,18 +12,21 @@ using static System.Net.Mime.MediaTypeNames;
 
 namespace MelonUI.Base
 {
-    public abstract partial class UIElement
+    public abstract partial class UIElement : IDisposable, IBindingHost
     {
         // CWM Interactions
         public virtual bool DefaultKeyControl { get; set; } = true;
         public virtual bool EnableCaching { get; set; } = true;
         public virtual bool NeedsRecalculation { get; set; } = true;
         public virtual bool RespectBackgroundOnDraw { get; set; } = true;
-        public virtual bool RenderThreadDeleteMe { get; set; } = false;
-        [Binding]
         private bool _IsFocused = false;
+        public bool IsFocused { get => _IsFocused; internal set => SetBoundValue(nameof(IsFocused), value, ref _IsFocused); }
         [Binding]
         private bool _ConsiderForFocus = true;
+        [Binding]
+        private bool _IsEnabled = true;
+        [Binding]
+        private int _TabIndex = 0;
         [Binding]
         private bool _LockControls = false;
         [Binding]
@@ -34,9 +37,36 @@ namespace MelonUI.Base
         private string _Name = "";
 
         // Element Tree
-        public UIElement Parent { get; set; }
-        public virtual ConsoleWindowManager ParentWindow { get; set; }
-        public List<UIElement> Children { get; } = new List<UIElement>();
+        public UIElement? Parent { get; internal set; }
+        public ConsoleWindowManager? ParentWindow { get; private set; }
+        public ElementCollection Children { get; }
+        internal ElementCollection? OwnerCollection { get; set; }
+        internal int AttachmentVersion { get; set; }
+        private long _invalidationVersion;
+        private readonly List<IDisposable> _ownedResources = new();
+        internal void OwnResource(IDisposable resource) => _ownedResources.Add(resource);
+        public bool IsDisposed { get; private set; }
+        public bool IsEffectivelyVisible => IsVisible && !IsDisposed && (Parent?.IsEffectivelyVisible ?? true);
+        public bool IsEffectivelyEnabled => IsEnabled && (Parent?.IsEffectivelyEnabled ?? true);
+        internal bool HasLayout { get; private set; }
+        internal bool CanFocus => ConsiderForFocus && IsEffectivelyVisible && IsEffectivelyEnabled &&
+            (!HasLayout || (ActualWidth > (ShowBorder ? 2 : 0) && ActualHeight > (ShowBorder ? 2 : 0) && HasVisibleArea));
+        private bool HasVisibleArea
+        {
+            get
+            {
+                var clip = Parent?.ContentRect ?? (0, 0, int.MaxValue, int.MaxValue);
+                return ActualX + ActualWidth > clip.Item1 && ActualY + ActualHeight > clip.Item2 &&
+                    ActualX < (long)clip.Item1 + clip.Item3 && ActualY < (long)clip.Item2 + clip.Item4 && (Parent?.HasVisibleArea ?? true);
+            }
+        }
+        internal bool RequiresContinuousRendering => !EnableCaching || _bindings.Values.Any(x => x.RequiresPolling) || Children.Any(x => x.IsVisible && x.RequiresContinuousRendering);
+        protected internal virtual IEnumerable<UIElement> FocusChildren => Children;
+        internal bool IsWithin(UIElement ancestor) => ReferenceEquals(this, ancestor) || (Parent?.IsWithin(ancestor) ?? false);
+        protected (int X, int Y, int Width, int Height) ContentRect
+        {
+            get { int edge = ShowBorder ? 1 : 0; return (edge, edge, Math.Max(0, ActualWidth - edge * 2), Math.Max(0, ActualHeight - edge * 2)); }
+        }
 
 
         // Binding Manager
@@ -45,16 +75,15 @@ namespace MelonUI.Base
         // Position Properties
         [Binding]
         private Alignment _XYAlignment = Alignment.TopLeft;
-        [Binding]
-        private string _UID = Guid.NewGuid().ToString();
+        public string UID { get; } = Guid.NewGuid().ToString();
         [Binding]
         private string _X = "";
         [Binding]
         private string _Y = "";
         [Binding]
-        private string _Width = "";
+        private string _Width = "100%";
         [Binding]
-        private string _Height = "";
+        private string _Height = "100%";
         [Binding]
         private string _MinWidth = "";
         [Binding]
@@ -103,38 +132,155 @@ namespace MelonUI.Base
 
         public UIElement()
         {
+            Children = new ElementCollection(this);
         }
+
+        internal void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(IsDisposed, this);
+        protected void VerifyAccess() { ThrowIfDisposed(); ParentWindow?.VerifyAccess(); }
+
+        public T? Find<T>(string name) where T : UIElement
+        {
+            VerifyAccess();
+            return ElementTree.Find<T>(Children, name);
+        }
+
+        public UIElement? FindById(string id)
+        {
+            VerifyAccess();
+            return ElementTree.Descendants(Children).FirstOrDefault(x => x.UID == id);
+        }
+
+        public void Invalidate()
+        {
+            VerifyAccess();
+            ParentWindow?.RequestRender();
+            for (UIElement? current = this; current is not null; current = current.Parent)
+            {
+                current._invalidationVersion++;
+                current.NeedsRecalculation = true;
+            }
+        }
+
+        /// <summary>Detaches this element. It can be attached again, including to another window.</summary>
+        public void Remove() { VerifyAccess(); OwnerCollection?.Remove(this); }
+
+        /// <summary>Queues removal on the UI loop, replacing the old render-thread deletion flag.</summary>
+        public void RequestRemove()
+        {
+            ThrowIfDisposed();
+            var owner = OwnerCollection;
+            var version = AttachmentVersion;
+            if (owner is null) return;
+            if (ParentWindow is { IsRunning: true } window)
+                window.Post(() => { if (OwnerCollection == owner && AttachmentVersion == version) Remove(); });
+            else Remove();
+        }
+
+        internal void SetWindow(ConsoleWindowManager? window)
+        {
+            var previous = ParentWindow;
+            if (ReferenceEquals(previous, window)) return;
+            ParentWindow = window;
+            AttachmentVersion++; // Descendants also acquire a new attachment when their ancestor moves.
+            foreach (var binding in _bindings.Values.Distinct())
+                if (window is null) binding.Suspend(); else binding.Resume();
+            foreach (var child in Children) child.SetWindow(window);
+            if (previous is not null) OnDetachedFromWindow(previous);
+            if (window is not null) OnAttachedToWindow(window);
+        }
+
+        protected virtual void OnAttachedToWindow(ConsoleWindowManager window) { }
+        protected virtual void OnDetachedFromWindow(ConsoleWindowManager window) { }
+        protected virtual void OnChildAdded(UIElement child) { }
+        protected virtual void OnChildRemoved(UIElement child) { }
+        internal void ChildAdded(UIElement child) => OnChildAdded(child);
+        internal void ChildRemoved(UIElement child) => OnChildRemoved(child);
+
+        public void Dispose()
+        {
+            if (IsDisposed) return;
+            VerifyAccess();
+            Remove();
+            List<Exception>? failures = null;
+            foreach (var child in Children.ToArray())
+            {
+                try { child.Dispose(); }
+                catch (Exception ex) { (failures ??= new()).Add(ex); }
+            }
+            Children.Clear();
+            foreach (var binding in _bindings.Values.Distinct()) binding.Dispose();
+            _bindings.Clear();
+            _KeyboardControls.Clear();
+            foreach (var resource in _ownedResources.AsEnumerable().Reverse())
+            {
+                try { resource.Dispose(); }
+                catch (Exception ex) { (failures ??= new()).Add(ex); }
+            }
+            _ownedResources.Clear();
+            try { DisposeCore(); }
+            catch (Exception ex) { (failures ??= new()).Add(ex); }
+            finally { IsDisposed = true; GC.SuppressFinalize(this); }
+            if (failures is not null) throw new AggregateException("Element disposal failed.", failures);
+        }
+
+        /// <summary>Release resources permanently. Remove/reattach does not call this hook.</summary>
+        protected virtual void DisposeCore() { }
 
         /// <summary>
         /// Sets a binding for a property or event.
         /// </summary>
         public void SetBinding(string propertyName, Binding binding)
         {
+            VerifyAccess();
             if (binding == null)
                 throw new ArgumentNullException(nameof(binding));
 
+            if (_bindings.TryGetValue(propertyName, out var previous))
+            {
+                if (ReferenceEquals(previous, binding)) return;
+                previous.Dispose();
+            }
             _bindings[propertyName] = binding;
-            NeedsRecalculation = true;
+            binding.Watch(() =>
+            {
+                var window = ParentWindow;
+                var version = AttachmentVersion;
+                void Update()
+                {
+                    if (IsDisposed || AttachmentVersion != version || !_bindings.TryGetValue(propertyName, out var current) || current != binding) return;
+                    Invalidate(); OnPropertyChanged(propertyName);
+                }
+                if (window is { IsRunning: true } && !window.CheckAccess())
+                {
+                    try { window.Post(Update); }
+                    catch (InvalidOperationException) when (!window.IsRunning || window.IsStopping) { }
+                }
+                else Update();
+            });
+            if (ParentWindow is null) binding.Suspend(); else binding.Resume();
+            Invalidate();
+        }
+
+        public bool RemoveBinding(string propertyName)
+        {
+            VerifyAccess();
+            if (!_bindings.Remove(propertyName, out var binding)) return false;
+            binding.Dispose(); Invalidate(); return true;
+        }
+
+        internal Binding? DetachBinding(string propertyName)
+        {
+            VerifyAccess();
+            if (!_bindings.Remove(propertyName, out var binding)) return null;
+            binding.Suspend(); return binding;
         }
 
         /// <summary>
         /// Gets the bound value or the local value.
         /// </summary>
-        protected object GetBoundValue(string propertyName, object localValue)
+        protected object? GetBoundValue(string propertyName, object? localValue)
         {
-            try
-            {
-                if (_bindings.TryGetValue(propertyName, out var binding))
-                {
-                    if (binding.IsProperty)
-                        return binding.GetValue();
-                }
-                return localValue;
-            }
-            catch (Exception)
-            {
-                return localValue;
-            }
+            return _bindings.TryGetValue(propertyName, out var binding) && !binding.IsEvent ? binding.GetValue() : localValue;
         }
 
         /// <summary>
@@ -142,25 +288,35 @@ namespace MelonUI.Base
         /// </summary>
         protected void SetBoundValue<T>(string propertyName, T value, ref T localStorage)
         {
+            VerifyAccess();
             if (_bindings.TryGetValue(propertyName, out var binding))
             {
                 if (binding.IsProperty)
                 {
                     binding.SetValue(value);
-                    NeedsRecalculation = true;
+                    Invalidate();
+                    OnPropertyChanged(propertyName);
                     return;
                 }
                 // Event bindings are handled separately
             }
 
             // Not bound, set locally
+            if (EqualityComparer<T>.Default.Equals(localStorage, value)) return;
             localStorage = value;
-            NeedsRecalculation = true;
+            Invalidate();
+            OnPropertyChanged(propertyName);
+        }
+
+        protected virtual void OnPropertyChanged(string propertyName)
+        {
+            if (propertyName is nameof(IsVisible) or nameof(IsEnabled) or nameof(ConsiderForFocus)) ParentWindow?.TreeChanged();
         }
 
         // Base rendering method
         public ConsoleBuffer Render()
         {
+            VerifyAccess();
             var buffer = new ConsoleBuffer(ActualWidth, ActualHeight);
             var background = IsFocused ? FocusedBackground : Background;
 
@@ -168,6 +324,7 @@ namespace MelonUI.Base
             {
                 return buffer;
             }
+            buffer.Clear(background);
 
             // Draw border if enabled
             if (ShowBorder)
@@ -176,7 +333,9 @@ namespace MelonUI.Base
             }
 
             // Call the derived class's rendering implementation
+            long version = _invalidationVersion;
             RenderContent(buffer);
+            NeedsRecalculation = version != _invalidationVersion;
 
             return buffer;
         }
@@ -211,136 +370,43 @@ namespace MelonUI.Base
 
         public virtual void CalculateLayout(int parentX, int parentY, int parentWidth, int parentHeight)
         {
-            // Get inital X/Y
-            int parsedX = ParseRelativeValue(X, parentWidth);
-            int parsedY = ParseRelativeValue(Y, parentHeight);
-
-            // Get Min W/H
-            ActualMinWidth = Math.Max(0, ParseRelativeValue(MinWidth, parentWidth));
-            ActualMinHeight = Math.Max(0, ParseRelativeValue(MinHeight, parentHeight));
-
-            // Get Max W/H
-            ActualMaxWidth = String.IsNullOrEmpty(MaxWidth) ? parentWidth : Math.Min(parentWidth, ParseRelativeValue(MaxWidth, parentWidth));
-            ActualMaxHeight = String.IsNullOrEmpty(MaxHeight) ? parentWidth : Math.Min(parentWidth, ParseRelativeValue(MaxHeight, parentWidth));
-
-            // Get inital W/H, based on if the Min W/H is bigger than the Actual W/H
-            int parsedWidth = Math.Max(ActualMinWidth, ParseRelativeValue(Width, parentWidth));
-            int parsedHeight = Math.Max(ActualMinHeight, ParseRelativeValue(Height, parentHeight));
-
-            // Get W/H based on Max W/H
-            parsedWidth = String.IsNullOrEmpty(MaxWidth) ? Math.Min(parsedWidth, ActualMaxWidth) : parsedWidth;
-            parsedHeight = String.IsNullOrEmpty(MaxHeight) ? Math.Min(parsedHeight, ActualMaxHeight) : parsedHeight;
-            switch (XYAlignment)
-            {
-                case Alignment.TopLeft:
-                    ActualX = Math.Max(0, parsedX + parentX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    break;
-                case Alignment.TopRight:
-                    ActualX = Math.Max(0, parsedX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    ActualX = parentWidth - (ActualX + parsedWidth);
-
-                    break;
-                case Alignment.TopCenter:
-                    ActualX = Math.Max(0, parsedX + parentX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    ActualX = (parentWidth / 2) - (parsedWidth / 2);
-                    break;
-                case Alignment.BottomLeft:
-                    ActualX = Math.Max(0, parsedX + parentX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    ActualY = parentHeight - (ActualY + parsedHeight);
-                    break;
-                case Alignment.BottomRight:
-                    ActualX = Math.Max(0, parsedX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    ActualY = parentHeight - (ActualY + parsedHeight);
-                    ActualX = parentWidth - (ActualX + parsedWidth);
-                    break;
-                case Alignment.BottomCenter:
-                    ActualX = Math.Max(0, parsedX + parentX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    ActualX = (parentWidth / 2) - (parsedWidth / 2);
-                    ActualY = parentHeight - (ActualY + parsedHeight);
-                    break;
-                case Alignment.Centered:
-                    ActualX = Math.Max(0, parsedX + parentX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    ActualX = (parentWidth / 2) - (parsedWidth / 2) + parsedX;
-                    ActualY = (parentHeight / 2) - (parsedHeight / 2) + parsedY;
-                    break;
-                case Alignment.CenterLeft:
-                    ActualX = Math.Max(0, parsedX + parentX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    ActualY = (parentHeight / 2) - (parsedHeight / 2);
-                    break;
-                case Alignment.CenterRight:
-                    ActualX = Math.Max(0, parsedX);
-                    ActualY = Math.Max(0, parsedY + parentY);
-                    ActualY = (parentHeight / 2) - (parsedHeight / 2);
-                    ActualX = parentWidth - (ActualX + parsedWidth);
-                    break;
-            }
-
-            ActualWidth = Math.Min(parentWidth - (ActualX - parentX), parsedWidth);
-            ActualHeight = Math.Min(parentHeight - (ActualY - parentY), parsedHeight);
-
-            foreach (var child in Children)
-            {
-                child.CalculateLayout(ActualX, ActualY, ActualWidth, ActualHeight);
-            }
+            VerifyAccess();
+            var previous = (ActualX, ActualY, ActualWidth, ActualHeight);
+            parentWidth = Math.Max(0, parentWidth);
+            parentHeight = Math.Max(0, parentHeight);
+            ActualMaxWidth = Math.Clamp(string.IsNullOrEmpty(MaxWidth) ? parentWidth : ParseRelativeValue(MaxWidth, parentWidth), 0, parentWidth);
+            ActualMaxHeight = Math.Clamp(string.IsNullOrEmpty(MaxHeight) ? parentHeight : ParseRelativeValue(MaxHeight, parentHeight), 0, parentHeight);
+            ActualMinWidth = Math.Clamp(ParseRelativeValue(MinWidth, parentWidth), 0, ActualMaxWidth);
+            ActualMinHeight = Math.Clamp(ParseRelativeValue(MinHeight, parentHeight), 0, ActualMaxHeight);
+            int width = Math.Clamp(ParseRelativeValue(Width, parentWidth), ActualMinWidth, ActualMaxWidth);
+            int height = Math.Clamp(ParseRelativeValue(Height, parentHeight), ActualMinHeight, ActualMaxHeight);
+            int x = ParseRelativeValue(X, parentWidth), y = ParseRelativeValue(Y, parentHeight);
+            bool right = XYAlignment is Alignment.TopRight or Alignment.CenterRight or Alignment.BottomRight;
+            bool bottom = XYAlignment is Alignment.BottomLeft or Alignment.BottomCenter or Alignment.BottomRight;
+            bool centerX = XYAlignment is Alignment.TopCenter or Alignment.Centered or Alignment.BottomCenter;
+            bool centerY = XYAlignment is Alignment.CenterLeft or Alignment.Centered or Alignment.CenterRight;
+            x = X == "center" ? (parentWidth - width) / 2 : right ? parentWidth - width - x : centerX ? (parentWidth - width) / 2 + x : x;
+            y = Y == "center" ? (parentHeight - height) / 2 : bottom ? parentHeight - height - y : centerY ? (parentHeight - height) / 2 + y : y;
+            x = Math.Clamp(x, -parentWidth, parentWidth);
+            y = Math.Clamp(y, -parentHeight, parentHeight);
+            ActualX = parentX + x;
+            ActualY = parentY + y;
+            ActualWidth = Math.Max(0, Math.Min(width, parentWidth - Math.Max(0, x)));
+            ActualHeight = Math.Max(0, Math.Min(height, parentHeight - Math.Max(0, y)));
+            HasLayout = true;
+            if (previous != (ActualX, ActualY, ActualWidth, ActualHeight)) Invalidate();
+            LayoutChildren();
         }
 
-        public int GetAbsoluteX()
+        protected virtual void LayoutChildren()
         {
-            int absoluteX = ActualX;
-            UIElement current = Parent;
-
-            while (current != null)
-            {
-                // Add parent's position
-                absoluteX += current.ActualX;
-
-                // If parent has a border, account for it
-                if (current.ShowBorder)
-                {
-                    absoluteX += 1;
-                }
-
-                current = current.Parent;
-            }
-
-            return absoluteX;
+            var area = ContentRect;
+            foreach (var child in Children.ToArray())
+                if (!child.IsDisposed && child.Parent == this) child.CalculateLayout(area.X, area.Y, area.Width, area.Height);
         }
 
-        public int GetAbsoluteY()
-        {
-            int absoluteY = ActualY;
-            UIElement current = Parent;
-
-            while (current != null)
-            {
-                // Add parent's position
-                absoluteY += current.ActualY;
-
-                // If parent has a border, account for it
-                if (current.ShowBorder)
-                {
-                    absoluteY += 1;
-                }
-
-                current = current.Parent;
-            }
-
-            // Account for the CWM's title/status bar
-            if (ParentWindow != null)
-            {
-                absoluteY += 2;
-            }
-
-            return absoluteY;
-        }
+        public int GetAbsoluteX() => ActualX + (Parent?.GetAbsoluteX() ?? 0);
+        public int GetAbsoluteY() => ActualY + (Parent?.GetAbsoluteY() ?? 0);
 
         public (int X, int Y) GetAbsolutePosition()
         {
@@ -393,35 +459,23 @@ namespace MelonUI.Base
         }
         public int ParseRelativeValue(string value, int parentSize)
         {
-            if (string.IsNullOrEmpty(value)) return 0;
-
-            if (value.EndsWith("%"))
-            {
-                if (int.TryParse(value.TrimEnd('%'), out int percentage))
-                {
-                    return (parentSize * percentage) / 100;
-                }
-            }
-            else if (value == "center")
-            {
-                return parentSize / 2;
-            }
-            else if (value == "auto")
-            {
-                return parentSize - 1;
-            }
-            else if (int.TryParse(value, out int absolute))
-            {
-                return absolute;
-            }
-
-            return 0;
+            if (string.IsNullOrWhiteSpace(value)) return 0;
+            value = value.Trim();
+            if (value == "center") return parentSize / 2;
+            if (value == "auto") return parentSize;
+            bool percent = value.EndsWith('%');
+            if (percent) value = value[..^1];
+            if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var amount) || !double.IsFinite(amount)) return 0;
+            if (percent) amount = parentSize * (amount / 100d);
+            return (int)Math.Clamp(amount, int.MinValue, int.MaxValue);
         }
-
 
         public void RegisterKeyboardControl(ConsoleKey key, Action action, string description,
             bool requireShift = false, bool requireControl = false, bool requireAlt = false)
         {
+            VerifyAccess();
+            ArgumentNullException.ThrowIfNull(action);
             KeyboardControls.Add(new KeyboardControl
             {
                 Key = key,
@@ -434,27 +488,31 @@ namespace MelonUI.Base
         }
         public void RegisterKeyboardControl(KeyboardControl keyControl)
         {
+            VerifyAccess();
+            ArgumentNullException.ThrowIfNull(keyControl);
             KeyboardControls.Add(keyControl);
         }
 
         public virtual IEnumerable<KeyboardControl> GetKeyboardControls()
         {
-            return KeyboardControls;
+            return KeyboardControls.ToArray();
         }
-        public virtual void HandleKey(ConsoleKeyInfo keyInfo)
+        public virtual void HandleKey(ConsoleKeyInfo keyInfo) => TryHandleKey(keyInfo);
+
+        /// <summary>Returns true when this element consumes the key. Unhandled keys may bubble or navigate focus.</summary>
+        public virtual bool TryHandleKey(ConsoleKeyInfo keyInfo)
         {
-            if (LockControls)
+            VerifyAccess();
+            if (LockControls || !IsEffectivelyVisible || !IsEffectivelyEnabled) return false;
+            foreach (var control in KeyboardControls.ToArray())
             {
-                return;
+                if (!control.Matches(keyInfo) || control.Action is null) continue;
+                control.Action();
+                return true;
             }
-            foreach (var control in KeyboardControls)
-            {
-                if (control.Matches(keyInfo))
-                {
-                    control.Action();
-                }
-            }
+            return false;
         }
+
 
     }
 }

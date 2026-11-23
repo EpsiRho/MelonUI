@@ -1,4 +1,4 @@
-﻿using MelonUI.Attributes;
+using MelonUI.Attributes;
 using MelonUI.Base;
 using System;
 using System.Collections.Generic;
@@ -7,6 +7,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
+using System.Globalization;
 
 namespace MelonUI.Default
 {
@@ -24,196 +25,323 @@ namespace MelonUI.Default
         {
             get
             {
-                return (bool)GetBoundValue(nameof(HideCharacters), _HideCharacters);
+                return (bool)(GetBoundValue(nameof(HideCharacters), _HideCharacters) ?? _HideCharacters);
             }
             set
             {
                 SetBoundValue(nameof(HideCharacters), value, ref _HideCharacters);
-                IsCharactersHidden = value;
+                _revealed = false;
             }
         }
-        [Binding]
-        private bool isCharactersHidden = false;
+        private bool _revealed;
+        public bool IsCharactersHidden => HideCharacters && !_revealed;
+        public bool ReadOnly { get; set; }
+        public int MaxLength { get; set; }
         [Binding]
         private Color cursorColorForeground = Color.Cyan;
         [Binding]
         private Color cursorColorBackground = Color.Gray;
         [Binding]
-        private Action<string, TextBox> onTextChanged;
+        private Action<string, TextBox>? onTextChanged;
         [Binding]
-        public Action<string, TextBox> onEnter;
+        public Action<string, TextBox>? onEnter;
         [Binding]
-        public Action enterHit;
-        private int _scrollOffset = 0;
+        public Action? enterHit;
+
+        [Binding]
+        private bool multiline = false;
+
+        private int _scrollOffset;
+        private int _verticalScrollOffset;
+        private int? _preferredColumn;
         private const int SCROLL_MARGIN = 2;
 
         public TextBox()
         {
-            RegisterKeyboardControl(
-                ConsoleKey.Enter,
-                () => { OnEnter?.Invoke(Text, this); EnterHit?.Invoke(); },
-                "Enter"
-            );
+            Height = "5";
+            EnableCaching = false;
+            var enter = new KeyboardControl
+            {
+                Description = "Enter (Shift+Enter submits in multiline mode)",
+                Wildcard = key => key.Key == ConsoleKey.Enter
+            };
+            enter.Action = () =>
+            {
+                if (Multiline && (enter.KeyInfo.GetValueOrDefault().Modifiers & (ConsoleModifiers.Shift | ConsoleModifiers.Control)) == 0)
+                    InsertText("\n");
+                else
+                {
+                    OnEnter?.Invoke(Text, this);
+                    EnterHit?.Invoke();
+                }
+            };
+            RegisterKeyboardControl(enter);
+            RegisterKeyboardControl(ConsoleKey.LeftArrow, () => MoveHorizontal(-1), "Move cursor left");
+            RegisterKeyboardControl(ConsoleKey.RightArrow, () => MoveHorizontal(1), "Move cursor right");
+            RegisterKeyboardControl(ConsoleKey.Home, () => MoveToEdge(false), "Move to line start");
+            RegisterKeyboardControl(ConsoleKey.End, () => MoveToEdge(true), "Move to line end");
 
-            RegisterKeyboardControl(
-                ConsoleKey.LeftArrow,
-                () => { if (CursorPosition > 0) CursorPosition--; },
-                "Move cursor left"
-            );
+            // Leave Up/Down available to parent navigation in single-line mode.
+            var vertical = new KeyboardControl
+            {
+                Description = "Move cursor up/down",
+                Wildcard = key => Multiline &&
+                    (key.Key == ConsoleKey.UpArrow || key.Key == ConsoleKey.DownArrow)
+            };
+            vertical.Action = () => MoveVertical(vertical.KeyInfo.GetValueOrDefault().Key == ConsoleKey.UpArrow ? -1 : 1);
+            RegisterKeyboardControl(vertical);
 
-            RegisterKeyboardControl(
-                ConsoleKey.Home,
-                () => { CursorPosition = 0; },
-                "Move cursor left"
-            );
-            RegisterKeyboardControl(
-                ConsoleKey.End,
-                () => { CursorPosition = Text.Length; },
-                "Move cursor left"
-            );
-
-            RegisterKeyboardControl(
-                ConsoleKey.RightArrow,
-                () => { if (CursorPosition < Text.Length) CursorPosition++; },
-                "Move cursor right"
-            );
-
-            RegisterKeyboardControl(
-                ConsoleKey.Backspace,
-                () => {
-                    if (CursorPosition > 0)
-                    {
-                        Text = Text.Remove(CursorPosition - 1, 1);
-                        CursorPosition--;
-                        OnTextChanged?.Invoke(Text, this);
-                    }
-                },
-                "Delete character back"
-            );
-
-            RegisterKeyboardControl(
-                ConsoleKey.Delete,
-                () => {
-                    if (CursorPosition > 0 && CursorPosition < Text.Length)
-                    {
-                        Text = Text.Remove(CursorPosition, 1);
-                        OnTextChanged?.Invoke(Text, this);
-                    }
-                },
-                "Delete character current"
-            );
-
-            RegisterKeyboardControl(
-                ConsoleKey.Tab,
-                () => {
-                    if (HideCharacters)
-                    {
-                        IsCharactersHidden = !IsCharactersHidden;
-                    }
-                },
-                "Delete character current"
-            );
-
-            var ctl = new KeyboardControl()
+            RegisterKeyboardControl(ConsoleKey.Backspace, () => DeleteCluster(true), "Delete previous character");
+            RegisterKeyboardControl(ConsoleKey.Delete, () => DeleteCluster(false), "Delete next character");
+            RegisterKeyboardControl(ConsoleKey.R, () =>
+            {
+                if (HideCharacters && IsFocused) { _revealed = !_revealed; _preferredColumn = null; Invalidate(); }
+            }, "Reveal/conceal password", requireControl: true);
+            var typing = new KeyboardControl
             {
                 Description = "Typing",
-                Wildcard = (keyInfo) =>
-                {
-                    if (!char.IsControl(keyInfo.KeyChar))
-                    {
-                        return true;
-                    }
-                    return false;
-                },
+                Wildcard = key => !ReadOnly && !char.IsControl(key.KeyChar) && (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) == 0
             };
-            ctl.Action = () =>
+            typing.Action = () => InsertText(typing.KeyInfo.GetValueOrDefault().KeyChar.ToString());
+            RegisterKeyboardControl(typing);
+        }
+
+        private void NormalizeCursor()
+        {
+            CursorPosition = Math.Clamp(CursorPosition, 0, (Text ?? "").Length);
+            if (CursorPosition == 0 || CursorPosition == (Text ?? "").Length) return;
+            var starts = StringInfo.ParseCombiningCharacters(Text ?? "");
+            int index = Array.BinarySearch(starts, CursorPosition);
+            if (index < 0) CursorPosition = starts[Math.Max(0, ~index - 1)];
+        }
+
+        private int AdjacentBoundary(int direction)
+        {
+            var starts = StringInfo.ParseCombiningCharacters(Text ?? "");
+            if (direction > 0)
             {
-                Text = Text.Insert(CursorPosition, ctl.KeyInfo.Value.KeyChar.ToString());
-                CursorPosition++;
-                OnTextChanged?.Invoke(Text, this);
-                NeedsRecalculation = true;
-            };
-            RegisterKeyboardControl(ctl);
+                foreach (int start in starts) if (start > CursorPosition) return start;
+                return (Text ?? "").Length;
+            }
+            for (int i = starts.Length - 1; i >= 0; i--)
+                if (starts[i] < CursorPosition) return starts[i];
+            return 0;
+        }
+
+        private void MoveHorizontal(int direction)
+        {
+            NormalizeCursor();
+            CursorPosition = AdjacentBoundary(direction);
+            _preferredColumn = null;
+            NeedsRecalculation = true;
+        }
+
+        private void InsertText(string value)
+        {
+            if (ReadOnly) return;
+            NormalizeCursor();
+            if (MaxLength > 0) value = value[..Math.Min(value.Length, Math.Max(0, MaxLength - (Text ?? "").Length))];
+            Text = (Text ?? "").Insert(CursorPosition, value);
+            CursorPosition += value.Length;
+            TextEdited();
+        }
+
+        private void DeleteCluster(bool backwards)
+        {
+            if (ReadOnly) return;
+            NormalizeCursor();
+            int other = AdjacentBoundary(backwards ? -1 : 1);
+            int start = Math.Min(CursorPosition, other);
+            int length = Math.Abs(CursorPosition - other);
+            if (length == 0) return;
+            Text = Text.Remove(start, length);
+            CursorPosition = start;
+            TextEdited();
+        }
+
+        private void TextEdited()
+        {
+            _preferredColumn = null;
+            NeedsRecalculation = true;
+            OnTextChanged?.Invoke(Text, this);
+        }
+
+        protected override void OnPropertyChanged(string name)
+        {
+            if (name == nameof(IsFocused) && !IsFocused) _revealed = false;
+            base.OnPropertyChanged(name);
+        }
+
+        private List<(int Start, int End)> GetLines()
+        {
+            string value = Text ?? "";
+            var lines = new List<(int Start, int End)>();
+            int start = 0;
+            if (Multiline)
+            {
+                for (int i = 0; i < value.Length; i++)
+                {
+                    if (value[i] != '\r' && value[i] != '\n') continue;
+                    lines.Add((start, i));
+                    if (value[i] == '\r' && i + 1 < value.Length && value[i + 1] == '\n') i++;
+                    start = i + 1;
+                }
+            }
+            lines.Add((start, value.Length)); // Includes empty text and a trailing empty line.
+            return lines;
+        }
+
+        private int CursorLine(List<(int Start, int End)> lines)
+        {
+            for (int i = lines.Count - 1; i >= 0; i--)
+                if (CursorPosition >= lines[i].Start) return i;
+            return 0;
+        }
+
+        private string DisplayCluster(string cluster)
+        {
+            if (HideCharacters && (!_revealed || ParentWindow?.IsCapturing == true)) return HiddenCharacter.ToString();
+            // Bound single-line text may contain newlines; never write control codes to the buffer.
+            if (cluster.Any(char.IsControl)) return " ";
+            return cluster;
+        }
+
+        private int ClusterWidth(string cluster) =>
+            Math.Max(1, ConsoleBuffer.GetStringWidth(DisplayCluster(cluster)));
+
+        private int VisualColumn(int start, int end)
+        {
+            string value = (Text ?? "").Substring(start, Math.Max(0, end - start));
+            var enumerator = StringInfo.GetTextElementEnumerator(value);
+            int column = 0;
+            while (enumerator.MoveNext()) column += ClusterWidth(enumerator.GetTextElement());
+            return column;
+        }
+
+        private void MoveToEdge(bool end)
+        {
+            NormalizeCursor();
+            var lines = GetLines();
+            var line = lines[CursorLine(lines)];
+            CursorPosition = end ? line.End : line.Start;
+            _preferredColumn = null;
+            NeedsRecalculation = true;
+        }
+
+        private void MoveVertical(int direction)
+        {
+            NormalizeCursor();
+            var lines = GetLines();
+            int row = CursorLine(lines);
+            int target = Math.Clamp(row + direction, 0, lines.Count - 1);
+            if (target == row) return;
+            _preferredColumn ??= VisualColumn(lines[row].Start, Math.Min(CursorPosition, lines[row].End));
+            var line = lines[target];
+            int position = line.Start, column = 0;
+            var enumerator = StringInfo.GetTextElementEnumerator((Text ?? "").Substring(line.Start, line.End - line.Start));
+            while (enumerator.MoveNext())
+            {
+                string cluster = enumerator.GetTextElement();
+                int width = ClusterWidth(cluster);
+                if (column + width > _preferredColumn.Value) break;
+                column += width;
+                position += cluster.Length;
+            }
+            CursorPosition = position;
+            NeedsRecalculation = true;
+        }
+
+        private static int ScrollToCursor(int offset, int cursor, int size, int extent)
+        {
+            int margin = Math.Min(SCROLL_MARGIN, Math.Max(0, (size - 1) / 2));
+            if (cursor < offset + margin) offset = cursor - margin;
+            else if (cursor >= offset + size - margin) offset = cursor - size + margin + 1;
+            return Math.Clamp(offset, 0, Math.Max(0, extent - size));
         }
 
         protected override void RenderContent(ConsoleBuffer buffer)
         {
-            int bump = ShowBorder ? 1 : 0;
-            int bumpX = ShowBorder ? 1 : 0;
-            int visibleWidth = ActualWidth - 4;
-
-            // Calculate the scroll position
-            UpdateScrollOffset(visibleWidth);
-
-            if (!string.IsNullOrEmpty(Label))
+            NormalizeCursor();
+            int border = ShowBorder ? 1 : 0;
+            int labelY = border;
+            int labelWidth = Math.Max(0, buffer.Width - border * 2);
+            if (labelY < buffer.Height && labelWidth > 0)
             {
-                if (ShowBorder)
+                buffer.WriteString(1, labelY, new string(' ', labelWidth), Foreground, Background);
+                int x = 1;
+                var labelElements = StringInfo.GetTextElementEnumerator(Label ?? "");
+                while (labelElements.MoveNext())
                 {
-                    var borderForeground = IsFocused ? FocusedBorderColor : BorderColor;
-                    var borderBackground = IsFocused ? FocusedBackground : Background;
-
-                    buffer.WriteString(1, bump, Label.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), Foreground, Background);
-                    bump++;
-                    buffer.WriteString(0, bump, $"{"├".PadRight(buffer.Width - 1, BoxHorizontal).Substring(0, buffer.Width - 1)}┤", borderForeground, borderBackground);
-                    bump++;
-                }
-                else
-                {
-                    buffer.WriteString(1, bump, Label.PadRight(buffer.Width - 2).Substring(0, buffer.Width - 2), Foreground, Background);
-                    bump++;
+                    string part = labelElements.GetTextElement();
+                    if (part.Any(char.IsControl)) part = " ";
+                    int width = Math.Max(1, ConsoleBuffer.GetStringWidth(part));
+                    if (x + width > buffer.Width - 1) break;
+                    buffer.WriteString(x, labelY, part, Foreground, Background);
+                    x += width;
                 }
             }
+            int top = string.IsNullOrEmpty(Label) ? border : ShowBorder ? 3 : 1;
+            if (!string.IsNullOrEmpty(Label) && ShowBorder && buffer.Width >= 2 && buffer.Height > 3)
+                buffer.WriteString(0, 2, "├" + new string(BoxHorizontal, buffer.Width - 2) + "┤",
+                    IsFocused ? FocusedBorderColor : BorderColor, IsFocused ? FocusedBackground : Background);
 
-            // Draw text
-            bool cursorDrawn = false;
-            int max = bumpX;
+            int visibleWidth = buffer.Width - 2 * border;
+            int availableHeight = buffer.Height - top - border;
+            if (visibleWidth <= 0 || availableHeight <= 0) return;
+            int visibleHeight = Multiline ? availableHeight : 1;
+            var lines = GetLines();
+            int row = CursorLine(lines);
+            int cursorColumn = VisualColumn(lines[row].Start, Math.Min(CursorPosition, lines[row].End));
+            int lineWidth = VisualColumn(lines[row].Start, lines[row].End);
+            _scrollOffset = ScrollToCursor(_scrollOffset, cursorColumn, visibleWidth, lineWidth + 1);
+            _verticalScrollOffset = Multiline
+                ? ScrollToCursor(_verticalScrollOffset, row, visibleHeight, lines.Count) : 0;
 
-            for (int i = 0; i < visibleWidth && (_scrollOffset + i) < Text.Length; i++)
+            // Clear the whole input area so deleted lines and mode changes leave no stale text.
+            for (int y = top; y < top + availableHeight; y++)
+                buffer.WriteString(border, y, new string(' ', visibleWidth), Foreground, Background);
+
+            for (int screenRow = 0; screenRow < visibleHeight; screenRow++)
             {
-                var entry = !IsCharactersHidden ? Text[_scrollOffset + i] : HiddenCharacter;
-                bool isSelected = (_scrollOffset + i) == CursorPosition;
-                if (isSelected)
+                int lineIndex = _verticalScrollOffset + screenRow;
+                if (lineIndex >= lines.Count) break;
+                var line = lines[lineIndex];
+                var elements = StringInfo.GetTextElementEnumerator((Text ?? "").Substring(line.Start, line.End - line.Start));
+                int column = 0, position = line.Start;
+                bool cursorDrawn = false;
+                while (elements.MoveNext())
                 {
-                    cursorDrawn = true;
+                    string cluster = elements.GetTextElement();
+                    int width = ClusterWidth(cluster);
+                    int x = column - _scrollOffset;
+                    bool selected = IsFocused && lineIndex == row && position == CursorPosition;
+                    // Never draw half of a wide grapheme over a border or outside the viewport.
+                    if (x >= 0 && x + width <= visibleWidth)
+                    {
+                        buffer.WriteString(border + x, top + screenRow, DisplayCluster(cluster),
+                            selected ? CursorColorForeground : Foreground,
+                            selected ? CursorColorBackground : Background);
+                        cursorDrawn |= selected;
+                    }
+                    column += width;
+                    position += cluster.Length;
+                    if (column >= _scrollOffset + visibleWidth) break;
                 }
-
-                // Highlight the selected char
-                Color foreground = isSelected ? CursorColorForeground : Foreground;
-                Color background = isSelected ? CursorColorBackground : Background;
-
-                max = i + bumpX;
-                buffer.SetPixel(max, bump, entry, foreground, background);
-            }
-
-            // Draw cursor at end if needed
-            if (!cursorDrawn && CursorPosition >= _scrollOffset)
-            {
-                max = Math.Min(CursorPosition - _scrollOffset + bumpX, visibleWidth + bumpX);
-                buffer.SetPixel(max, bump, ' ', CursorColorForeground, CursorColorBackground);
+                if (IsFocused && lineIndex == row && !cursorDrawn)
+                {
+                    int x = cursorColumn - _scrollOffset;
+                    if (x >= 0 && x < visibleWidth)
+                        buffer.SetPixel(border + x, top + screenRow, ' ', CursorColorForeground, CursorColorBackground);
+                }
             }
         }
 
-        private void UpdateScrollOffset(int visibleWidth)
-        {
-            // If cursor moves too far right
-            if (CursorPosition >= _scrollOffset + visibleWidth - SCROLL_MARGIN)
-            {
-                _scrollOffset = Math.Min(
-                    CursorPosition - visibleWidth + SCROLL_MARGIN + 1,
-                    Math.Max(0, Text.Length - visibleWidth)
-                );
-            }
-            // If cursor moves too far left
-            else if (CursorPosition < _scrollOffset + SCROLL_MARGIN)
-            {
-                _scrollOffset = Math.Max(0, CursorPosition - SCROLL_MARGIN);
-            }
-        }
         public void Clear()
         {
             Text = "";
             CursorPosition = 0;
+            _scrollOffset = _verticalScrollOffset = 0;
+            TextEdited();
         }
-
     }
 }

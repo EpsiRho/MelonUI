@@ -1,157 +1,53 @@
-﻿using MelonUI.Attributes;
+using System.Drawing;
+using MelonUI.Attributes;
 using MelonUI.Base;
 using MelonUI.Enums;
-using MelonUI.Managers;
-using System;
-using System.Collections.Generic;
-using System.Drawing;
-using System.Linq;
-using System.Runtime.ConstrainedExecution;
-namespace MelonUI.Default
+
+namespace MelonUI.Default;
+
+public partial class QueueContainer : UIElement
 {
-    public partial class QueueContainer : UIElement
+    [Binding] private Direction stackDirection = Direction.Right;
+    [Binding] private int maxStackDisplaySize = 5;
+    public UIElement? CurrentElement => Children.FirstOrDefault(c => c.IsVisible);
+    protected internal override IEnumerable<UIElement> FocusChildren => CurrentElement is { } current ? [current] : [];
+    public QueueContainer() { ConsiderForFocus = false; EnableCaching = false; }
+    public void QueueElement(UIElement element) => Children.Add(element);
+    public void InsertElementAt(UIElement element, int index) => Children.Insert(index, element);
+    public UIElement? PopElement() { VerifyAccess(); var element = Children.FirstOrDefault(); element?.Remove(); return element; }
+    public void RemoveElementAt(int index) => Children.RemoveAt(index);
+    protected override void LayoutChildren()
     {
-        [Binding]
-        private Direction stackDirection = Direction.Right;
-        [Binding]
-        public int maxStackDisplaySize = 5;
-        public ConsoleWindowManager _parentWindow;
-        public override ConsoleWindowManager ParentWindow
+        var a = ContentRect;
+        int count = Children.Count(c => c.IsVisible);
+        int extent = StackDirection is Direction.Up or Direction.Down ? a.Height : a.Width;
+        int depth = Math.Clamp(count - 1, 0, Math.Max(0, Math.Min(MaxStackDisplaySize, extent - 1)));
+        int x = a.X + (StackDirection == Direction.Left ? depth : 0);
+        int y = a.Y + (StackDirection == Direction.Up ? depth : 0);
+        foreach (var child in Children.ToArray())
+            if (child == CurrentElement) child.CalculateLayout(x, y, Math.Max(0, a.Width - (StackDirection is Direction.Left or Direction.Right ? depth : 0)), Math.Max(0, a.Height - (StackDirection is Direction.Up or Direction.Down ? depth : 0)));
+            else child.CalculateLayout(a.X, a.Y, 0, 0);
+    }
+    protected override void RenderContent(ConsoleBuffer buffer)
+    {
+        var a = ContentRect;
+        int count = Children.Count(c => c.IsVisible);
+        int extent = StackDirection is Direction.Up or Direction.Down ? a.Height : a.Width;
+        int depth = Math.Clamp(count - 1, 0, Math.Max(0, Math.Min(MaxStackDisplaySize, extent - 1)));
+        for (int i = 0; i < depth; i++)
         {
-            get
+            var tint = Color.FromArgb(Foreground.A, Math.Max(20, Foreground.R - i * 20), Math.Max(20, Foreground.G - i * 20), Math.Max(20, Foreground.B - i * 20));
+            if (StackDirection is Direction.Up or Direction.Down)
             {
-                return _parentWindow;
+                int y = StackDirection == Direction.Up ? a.Y + i : a.Y + a.Height - 1 - i;
+                for (int x = a.X; x < a.X + a.Width; x++) buffer.SetPixel(x, y, '─', tint, Background);
             }
-            set
+            else
             {
-                if (value != _parentWindow)
-                {
-                    SetParentWindows(value);
-                }
-            }
-        }
-
-        public QueueContainer()
-        {
-        }
-        public void SetParentWindows(ConsoleWindowManager parent)
-        {
-            this._parentWindow = parent;
-            foreach(var pos in Children)
-            {
-                pos.ParentWindow = parent;
-            }
-        }
-
-        public void QueueElement(UIElement element)
-        {
-            element.Parent = this;
-            element.ParentWindow = this.ParentWindow;
-            Children.Add(element);
-
-            foreach (var control in element.GetKeyboardControls())
-            {
-                if(!control.Key.HasValue)
-                {
-                    control.Key = ConsoleKey.None;
-                }
-            }
-            NeedsRecalculation = true;
-        }
-        public void InsertElementAt(UIElement element, int idx)
-        {
-            element.Parent = this;
-            element.ParentWindow = this.ParentWindow;
-            Children.Insert(idx, element);
-
-            foreach (var control in element.GetKeyboardControls())
-            {
-                if(!control.Key.HasValue)
-                {
-                    control.Key = ConsoleKey.None;
-                }
-            }
-            NeedsRecalculation = true;
-        }
-        public void PopElement()
-        {
-            RemoveElementAt(0);
-        }
-        public void RemoveElementAt(int idx)
-        {
-            Children.RemoveAt(idx);
-            NeedsRecalculation = true;
-        }
-
-        protected override void RenderContent(ConsoleBuffer buffer)
-        {
-            // Initial Size
-            int fullInnerWidth = buffer.Width - (ShowBorder ? 2 : 0);
-            int fullInnerHeight = buffer.Height - (ShowBorder ? 2 : 0);
-            int innerWidth = buffer.Width - (ShowBorder ? 2 : 0);
-            int innerHeight = buffer.Height - (ShowBorder ? 2 : 0);
-
-            // Adjust size to account for stack frames
-            switch (StackDirection)
-            {
-                case Direction.Right:
-                    innerWidth -= Children.Count - 1 > MaxStackDisplaySize ? MaxStackDisplaySize : Children.Count - 1;
-                    break;
-            }
-
-            var borderClrF = IsFocused ? FocusedForeground : Foreground;
-            var borderClrB = IsFocused ? FocusedBackground : Background;
-
-            // Render Preview Frames
-            switch (StackDirection)
-            {
-                case Direction.Right:
-                    for(int y = 1; y < innerHeight - 1; y++)
-                    {
-                        for(int x = innerWidth; x < fullInnerWidth; x++)
-                        {
-                            int modifier = (30 * (MaxStackDisplaySize - (fullInnerWidth - (x))));
-                            var clr = Color.FromArgb(255, 
-                                borderClrF.R - modifier > 20 ? borderClrF.R - modifier : 20,
-                                borderClrF.B - modifier > 20 ? borderClrF.B - modifier : 20,
-                                borderClrF.G - modifier > 20 ? borderClrF.G - modifier : 20);
-                            buffer.SetPixel(x, y, BoxVertical, clr, borderClrB);
-                        }
-                    }
-                    for (int x = innerWidth; x < fullInnerWidth; x++)
-                    {
-                        int modifier = (30 * (MaxStackDisplaySize - (fullInnerWidth - (x))));
-                        var clr = Color.FromArgb(255,
-                            borderClrF.R - modifier > 20 ? borderClrF.R - modifier : 20,
-                            borderClrF.B - modifier > 20 ? borderClrF.B - modifier : 20,
-                            borderClrF.G - modifier > 20 ? borderClrF.G - modifier : 20);
-                        buffer.SetPixel(x, 0, BoxTopRight, clr, borderClrB);
-                        buffer.SetPixel(x, innerHeight - 1, BoxBottomRight, clr, borderClrB);
-                    }
-                    break;
-            }
-
-            // Render inner content
-            var curElm = Children.FirstOrDefault();
-            if(curElm != null)
-            {
-                curElm.Width = innerWidth.ToString();
-                curElm.Height = innerHeight.ToString();
-                curElm.IsFocused = IsFocused;
-
-                curElm.CalculateLayout(0, 0, innerWidth, innerHeight);
-                var elementBuffer = curElm.Render();
-                buffer.Write(curElm.ActualX, curElm.ActualY, elementBuffer);
+                int x = StackDirection == Direction.Left ? a.X + i : a.X + a.Width - 1 - i;
+                for (int y = a.Y; y < a.Y + a.Height; y++) buffer.SetPixel(x, y, '│', tint, Background);
             }
         }
-
-        public override void HandleKey(ConsoleKeyInfo keyInfo)
-        {
-            var currentElm = Children.FirstOrDefault();
-            if (currentElm != null)
-            {
-                currentElm.HandleKey(keyInfo);
-            }
-        }
+        if (CurrentElement is { ActualWidth: > 0, ActualHeight: > 0 } child) buffer.WriteBuffer(child.ActualX, child.ActualY, child.Render(), child.RespectBackgroundOnDraw);
     }
 }

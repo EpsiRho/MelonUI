@@ -30,7 +30,7 @@ namespace MelonUIDemo.Testing
                 Option = "Delete Cache"
             },
         };
-        public static ConsoleWindowManager CWM { get; set; }
+        public static ConsoleWindowManager CWM { get; set; } = null!;
         public static bool IsThereAnyLetter(ConsoleKeyInfo key)
         {
             return true;

@@ -1,77 +1,48 @@
-﻿using MelonUI.Attributes;
+using MelonUI.Attributes;
 using MelonUI.Base;
-using System;
 
-namespace MelonUI.Default
+namespace MelonUI.Default;
+
+public partial class Button : UIElement
 {
-    public partial class Button : UIElement
+    [Binding] private string text = "";
+    [Binding] private Action? onPressed;
+    public readonly ConsoleKey _key;
+    public Button() : this(ConsoleKey.Enter) { }
+    public Button(ConsoleKey key)
     {
-        [Binding]
-        public string text = "";
-        [Binding]
-        public Action onPressed;
-        public readonly ConsoleKey _key;
-
-        public Button(ConsoleKey key)
-        {
-            _key = key;
-            ShowBorder = false;
-
-            RegisterKeyboardControl(
-                key,
-                () => OnPressed?.Invoke(),
-                $"Activate {Text}"
-            );
-        }
-
-        protected override void RenderContent(ConsoleBuffer buffer)
-        {
-            var foreground = IsFocused ? FocusedBorderColor : BorderColor;
-            var background = IsFocused ? FocusedBackground : Background;
-
-            // Calculate content area
-            int contentWidth = buffer.Width;
-            int contentHeight = buffer.Height;
-
-            // Draw top border with key
-            string keyText = $"[({GetKeyDisplay(_key)}) {Text}]";
-
-            // Draw centered button text
-            int textStart = Math.Max(1, (contentWidth - keyText.Length) / 2);
-            for (int i = 0; i < keyText.Length && textStart + i < contentWidth - 2; i++)
-            {
-                buffer.SetPixel(textStart + i, contentHeight / 2, keyText[i], foreground, background);
-            }
-        }
-
-        public static string GetKeyDisplay(ConsoleKey key)
-        {
-            return key switch
-            {
-                ConsoleKey.Spacebar => "_",
-                ConsoleKey.Enter => "Etr",
-                ConsoleKey.Escape => "Esc",
-                ConsoleKey.Delete => "Del",
-                ConsoleKey.Backspace => "Bck",
-                ConsoleKey.Tab => "Tab",
-                ConsoleKey.UpArrow => "↑",
-                ConsoleKey.DownArrow => "↓",
-                ConsoleKey.LeftArrow => "←",
-                ConsoleKey.RightArrow => "→",
-                ConsoleKey.F1 => "F1",
-                ConsoleKey.F2 => "F2",
-                ConsoleKey.F3 => "F3",
-                ConsoleKey.F4 => "F4",
-                ConsoleKey.F5 => "F5",
-                ConsoleKey.F6 => "F6",
-                ConsoleKey.F7 => "F7",
-                ConsoleKey.F8 => "F8",
-                ConsoleKey.F9 => "F9",
-                ConsoleKey.F10 => "F10",
-                ConsoleKey.F11 => "F11",
-                ConsoleKey.F12 => "F12",
-                _ => key.ToString().Last().ToString()
-            };
-        }
+        _key = key;
+        Height = "3";
+        ShowBorder = false;
     }
+    public void PerformClick()
+    {
+        VerifyAccess();
+        if (IsEffectivelyVisible && IsEffectivelyEnabled && !LockControls) OnPressed?.Invoke();
+    }
+    public override bool TryHandleKey(ConsoleKeyInfo key)
+    {
+        if (LockControls || !IsEffectivelyVisible || !IsEffectivelyEnabled) return false;
+        if (base.TryHandleKey(key)) return true;
+        if ((key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt | ConsoleModifiers.Shift)) != 0) return false;
+        if (key.Key != _key && key.Key is not (ConsoleKey.Enter or ConsoleKey.Spacebar)) return false;
+        PerformClick(); return true;
+    }
+    internal string Caption => _key == ConsoleKey.Enter ? $"[ {Text} ]" : $"[({GetKeyDisplay(_key)}) {Text}]";
+    protected override void RenderContent(ConsoleBuffer buffer)
+    {
+        var area = ContentRect;
+        string caption = ControlDrawing.Clip(Caption, area.Width);
+        int x = area.X + Math.Max(0, (area.Width - ConsoleBuffer.GetStringWidth(caption)) / 2);
+        ControlDrawing.Text(buffer, x, area.Y + area.Height / 2, caption, area.Width,
+            !IsEffectivelyEnabled ? System.Drawing.Color.Gray : IsFocused ? FocusedForeground : Foreground,
+            IsFocused ? FocusedBackground : Background);
+    }
+    public static string GetKeyDisplay(ConsoleKey key) => key switch
+    {
+        ConsoleKey.Spacebar => "Space", ConsoleKey.Enter => "Enter", ConsoleKey.Escape => "Esc",
+        ConsoleKey.Backspace => "Back", ConsoleKey.UpArrow => "↑", ConsoleKey.DownArrow => "↓",
+        ConsoleKey.LeftArrow => "←", ConsoleKey.RightArrow => "→", ConsoleKey.Oem3 => "`",
+        _ => key.ToString()
+    };
 }

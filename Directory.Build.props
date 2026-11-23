@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Authors>MelonUI contributors</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/EpsiRho/MelonUI</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/EpsiRho/MelonUI</PackageProjectUrl>
+    <Deterministic>true</Deterministic>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+</Project>

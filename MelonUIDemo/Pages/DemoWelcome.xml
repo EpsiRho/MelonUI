@@ -60,10 +60,10 @@
 			 </OptionsMenu>
 			 
 		 - Keyboard controls can be added to any element by doing:
-		   <Board.KeyboardControls>
+		   <TextBlock.KeyboardControls>
 				<KeyboardControl Key="LeftArrow" Action="{Controls.MoveLeftCommand}"/> 
 				<KeyboardControl Key="RightArrow" Action="{Controls.MoveRightCommand}"/>
-		   </Board.KeyboardControls>
+		   </TextBlock.KeyboardControls>
 		   - Controls can be disabled by setting LockControls="true", and focus can be disabled
 			 all together by setting ConsiderForFocus="false"
 		 - UIElements have a border built in and shown by default, 
@@ -161,9 +161,9 @@
 			   Width="25%"
 			   Height="25%"
 			   Name="ErrorInfo">
-		<Board.KeyboardControls>
+		<TextBlock.KeyboardControls>
 			<KeyboardControl Wildcard="{DemoWelcomeBackend.CloseErrorDiagFunc}" Action="{DemoWelcomeBackend.CloseErrorDiag}"/>
-		</Board.KeyboardControls>
+		</TextBlock.KeyboardControls>
 	</TextBlock>
 
 	<!--  -->

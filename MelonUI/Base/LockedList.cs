@@ -120,7 +120,7 @@ public class LockedList<T>
     }
 
     // LINQ Support: FirstOrDefault
-    public T FirstOrDefault(Func<T, bool> predicate)
+    public T? FirstOrDefault(Func<T, bool> predicate)
     {
         lock (_lock)
         {
@@ -129,7 +129,7 @@ public class LockedList<T>
     }
 
     // LINQ Support: LastOrDefault
-    public T LastOrDefault(Func<T, bool> predicate)
+    public T? LastOrDefault(Func<T, bool> predicate)
     {
         lock (_lock)
         {

@@ -1,123 +1,28 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+namespace MelonUI.Base;
 
-namespace MelonUI.Base
+public sealed class KeyboardControl : IBindingHost
 {
-    public class KeyboardControl
+    private readonly BindingStore _bindings = new();
+    private ConsoleKey? _key;
+    private bool _shift, _control, _alt;
+    private Func<ConsoleKeyInfo, bool>? _wildcard;
+    private Action? _action;
+    private string? _description = "";
+    public ConsoleKey? Key { get => (ConsoleKey?)_bindings.GetValue(nameof(Key), _key); set => _bindings.SetValue(nameof(Key), value, ref _key); }
+    public ConsoleKeyInfo? KeyInfo { get; set; }
+    public bool RequireShift { get => (bool)_bindings.GetValue(nameof(RequireShift), _shift)!; set => _bindings.SetValue(nameof(RequireShift), value, ref _shift); }
+    public bool RequireControl { get => (bool)_bindings.GetValue(nameof(RequireControl), _control)!; set => _bindings.SetValue(nameof(RequireControl), value, ref _control); }
+    public bool RequireAlt { get => (bool)_bindings.GetValue(nameof(RequireAlt), _alt)!; set => _bindings.SetValue(nameof(RequireAlt), value, ref _alt); }
+    public Func<ConsoleKeyInfo, bool>? Wildcard { get => (Func<ConsoleKeyInfo, bool>?)_bindings.GetValue(nameof(Wildcard), _wildcard); set => _bindings.SetValue(nameof(Wildcard), value, ref _wildcard); }
+    public Action? Action { get => (Action?)_bindings.GetValue(nameof(Action), _action); set => _bindings.SetValue(nameof(Action), value, ref _action); }
+    public string? Description { get => (string?)_bindings.GetValue(nameof(Description), _description); set => _bindings.SetValue(nameof(Description), value, ref _description); }
+    public void SetBinding(string name, Binding binding) => _bindings.SetBinding(name, binding);
+    public bool RemoveBinding(string name) => _bindings.RemoveBinding(name);
+    public bool Matches(ConsoleKeyInfo keyInfo)
     {
-        protected Dictionary<string, Binding> _bindings = new Dictionary<string, Binding>();
-        /// <summary>
-        /// Sets a binding for a property or event.
-        /// </summary>
-        public void SetBinding(string propertyName, Binding binding)
-        {
-            if (binding == null)
-                throw new ArgumentNullException(nameof(binding));
-
-            _bindings[propertyName] = binding;
-        }
-
-        /// <summary>
-        /// Gets the bound value or the local value.
-        /// </summary>
-        protected object GetBoundValue(string propertyName, object localValue)
-        {
-            if (_bindings.TryGetValue(propertyName, out var binding))
-            {
-                if (binding.IsProperty)
-                {
-                    return binding.GetValue();
-                }
-                else if (binding.IsMethod)
-                {
-                    return binding.GetValue();
-                }
-            }
-            return localValue;
-        }
-
-        /// <summary>
-        /// Sets the bound value or the local value.
-        /// </summary>
-        protected void SetBoundValue(string propertyName, object value, ref object localStorage)
-        {
-            if (_bindings.TryGetValue(propertyName, out var binding))
-            {
-                if (binding.IsProperty)
-                {
-                    binding.SetValue(value);
-                    return;
-                }
-                // Event bindings are handled separately
-            }
-
-            // Not bound, set locally
-            localStorage = value;
-        }
-
-        public object _Key;
-        public ConsoleKey? Key
-        {
-            get => (ConsoleKey?)GetBoundValue(nameof(Key), _Key);
-            set => SetBoundValue(nameof(Key), value, ref _Key);
-        }
-        public ConsoleKeyInfo? KeyInfo{ get; set; }
-        public object _RequireShift = false;
-        public bool RequireShift
-        {
-            get => (bool)GetBoundValue(nameof(RequireShift), _RequireShift);
-            set => SetBoundValue(nameof(RequireShift), value, ref _RequireShift);
-        }
-        public object _RequireControl = false;
-        public bool RequireControl
-        {
-            get => (bool)GetBoundValue(nameof(RequireControl), _RequireControl);
-            set => SetBoundValue(nameof(RequireControl), value, ref _RequireControl);
-        }
-        public object _RequireAlt = false;
-        public bool RequireAlt
-        {
-            get => (bool)GetBoundValue(nameof(RequireAlt), _RequireAlt);
-            set => SetBoundValue(nameof(RequireAlt), value, ref _RequireAlt);
-        }
-        public object _Wildcard;
-        public Func<ConsoleKeyInfo, bool> Wildcard
-        {
-            get => (Func<ConsoleKeyInfo, bool>)GetBoundValue(nameof(Wildcard), _Wildcard);
-            set => SetBoundValue(nameof(Wildcard), value, ref _Wildcard);
-        }
-        public object _Action;
-        public Action Action
-        {
-            get => (Action)GetBoundValue(nameof(Action), _Action);
-            set => SetBoundValue(nameof(Action), value, ref _Action);
-        }
-        public object _Description = "";
-        public string? Description
-        {
-            get => (string?)GetBoundValue(nameof(Description), _Description);
-            set => SetBoundValue(nameof(Description), value, ref _Description);
-        }
-
-        public bool Matches(ConsoleKeyInfo keyInfo)
-        {
-            if (Wildcard != null) 
-            {
-                Key = keyInfo.Key;
-                KeyInfo = keyInfo;
-                var res = Wildcard(keyInfo);
-                return res;
-            }
-            
-
-            return keyInfo.Key == Key &&
-                   keyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift) == RequireShift &&
-                   keyInfo.Modifiers.HasFlag(ConsoleModifiers.Control) == RequireControl &&
-                   keyInfo.Modifiers.HasFlag(ConsoleModifiers.Alt) == RequireAlt;
-        }
+        KeyInfo = keyInfo;
+        if (Wildcard is { } wildcard) return wildcard(keyInfo);
+        return keyInfo.Key == Key && keyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift) == RequireShift &&
+            keyInfo.Modifiers.HasFlag(ConsoleModifiers.Control) == RequireControl && keyInfo.Modifiers.HasFlag(ConsoleModifiers.Alt) == RequireAlt;
     }
-
 }

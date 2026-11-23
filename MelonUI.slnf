@@ -1,0 +1,10 @@
+{
+  "solution": {
+    "path": "MelonUIDemo.sln",
+    "projects": [
+      "MelonUI\\MelonUI.csproj",
+      "MelonUIBindingGenerator\\MelonUIBindingGenerator.csproj",
+      "MelonUI.Tests\\MelonUI.Tests.csproj"
+    ]
+  }
+}

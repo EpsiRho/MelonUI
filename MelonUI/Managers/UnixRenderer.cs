@@ -1,227 +1,88 @@
-﻿using System;
-using System.Diagnostics;
+using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
-using System.Runtime.CompilerServices;
+using System.Text;
 using MelonUI.Base;
 
 public class UnixRenderer
 {
-    private const int STDOUT_FILENO = 1;
-    private const int TIOCGWINSZ = 0x5413;
-    private const int TCGETS = 0x5401;
-    private const int TCSETS = 0x5402;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct termios
-    {
-        public uint c_iflag;
-        public uint c_oflag;
-        public uint c_cflag;
-        public uint c_lflag;
-        public byte c_line;
-        [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
-        public byte[] c_cc;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct winsize
-    {
-        public ushort ws_row;
-        public ushort ws_col;
-        public ushort ws_xpixel;
-        public ushort ws_ypixel;
-    }
-
     [DllImport("libc", SetLastError = true)]
-    private static extern int write(int fd, byte[] buf, int count);
-
-    [DllImport("libc", SetLastError = true)]
-    private static extern int ioctl(int fd, int cmd, IntPtr arg);
-
-    [DllImport("libc", SetLastError = true)]
-    private static extern int tcgetattr(int fd, out termios termios_p);
-
-    [DllImport("libc", SetLastError = true)]
-    private static extern int tcsetattr(int fd, int optional_actions, ref termios termios_p);
-
-    private byte[] writeBuffer;
-    private readonly bool vtProcessingEnabled;
-
-    // Conservative estimate of max bytes needed per pixel
-    private const int BYTES_PER_PIXEL = 50; // Color sequences + char + safety margin
-    private const int MAX_COLOR_SEQUENCE_LENGTH = 38; // Max length of a color sequence
-
+    private static extern nint write(int fd, IntPtr buffer, nuint count);
+    private byte[] _output = [];
     public int Width { get; private set; }
     public int Height { get; private set; }
-
     public static bool IsSupported = OperatingSystem.IsLinux();
-
-    public UnixRenderer(int width, int height)
-    {
-        // Check if we can enable VT processing
-        SetSize(width, height);
-    }
-
+    public UnixRenderer(int width, int height) => SetSize(width, height);
     public void SetSize(int width, int height)
     {
-        Width = width;
-        Height = height;
-        // Allocate buffer with enough space for all possible characters and sequences
-        int bufferSize = (width * height * BYTES_PER_PIXEL) + MAX_COLOR_SEQUENCE_LENGTH;
-        writeBuffer = new byte[bufferSize];
+        ArgumentOutOfRangeException.ThrowIfNegative(width);
+        ArgumentOutOfRangeException.ThrowIfNegative(height);
+        _output = new byte[checked(width * height * 50 + 64)];
+        Width = width; Height = height;
+    }
+
+    // Test the exact Linux frame encoding without requiring a native terminal.
+    internal ReadOnlyMemory<byte> BuildFrame(ConsolePixel[] buffer)
+    {
+        ArgumentNullException.ThrowIfNull(buffer);
+        if (buffer.Length < checked(Width * Height)) throw new ArgumentException("Pixel buffer is smaller than the viewport.", nameof(buffer));
+        if (Width == 0 || Height == 0) return ReadOnlyMemory<byte>.Empty;
+        int offset = 0, lastFg = int.MinValue, lastBg = int.MinValue;
+        void Append(string text) => offset += Encoding.UTF8.GetBytes(text, _output.AsSpan(offset));
+        Append("\x1b[H");
+        Span<char> glyph = stackalloc char[2];
+        for (int y = 0; y < Height; y++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                var pixel = buffer[y * Width + x];
+                bool raw = pixel.Character == '\uffff';
+                var foreground = raw ? Color.Black : pixel.Foreground;
+                var background = raw ? Color.FromArgb(255, (int)pixel.R, (int)pixel.G, (int)pixel.B) : pixel.Background;
+                if (foreground.ToArgb() != lastFg)
+                {
+                    Append(foreground.A == 0 ? "\x1b[39m" : $"\x1b[38;2;{foreground.R};{foreground.G};{foreground.B}m");
+                    lastFg = foreground.ToArgb();
+                }
+                if (background.ToArgb() != lastBg)
+                {
+                    Append(background.A == 0 ? "\x1b[49m" : $"\x1b[48;2;{background.R};{background.G};{background.B}m");
+                    lastBg = background.ToArgb();
+                }
+                char ch = raw || pixel.Character == '\0' || char.IsControl(pixel.Character) ? ' ' : pixel.Character;
+                glyph[0] = ch;
+                int length = 1;
+                bool nextCell = x + 1 < Width;
+                if (char.IsHighSurrogate(ch) && nextCell && char.IsLowSurrogate(buffer[y * Width + x + 1].Character))
+                { glyph[1] = buffer[y * Width + x + 1].Character; length = 2; }
+                else if (char.IsSurrogate(ch)) glyph[0] = '\ufffd';
+                offset += Encoding.UTF8.GetBytes(glyph[..length], _output.AsSpan(offset));
+                if ((pixel.IsWide || length == 2) && nextCell) x++;
+            }
+            if (y + 1 < Height) Append("\r\n");
+        }
+        Append("\x1b[0m");
+        return _output.AsMemory(0, offset);
     }
 
     public unsafe void RenderToConsole(ConsolePixel[] buffer)
     {
-        if (Width <= 0 || Height <= 0 || buffer == null) return;
-
-        try
+        var frame = BuildFrame(buffer);
+        fixed (byte* start = frame.Span)
         {
-            int writeOffset = 0;
-            int maxLength = writeBuffer.Length;
-
-            // Move cursor home - direct assignment
-            writeBuffer[writeOffset++] = 0x1b;
-            writeBuffer[writeOffset++] = (byte)'[';
-            writeBuffer[writeOffset++] = (byte)'H';
-
-            int lastFg = default;
-            int lastBg = default;
-            int bufferIndex = 0;
-            int widthMinusOne = Width - 1;
-            int heightMinusOne = Height - 1;
-
-            // Preallocate common sequences
-            byte[] resetFg = new byte[] { 0x1b, (byte)'[', (byte)'3', (byte)'9', (byte)'m' };
-            byte[] resetBg = new byte[] { 0x1b, (byte)'[', (byte)'4', (byte)'9', (byte)'m' };
-            byte[] resetSequence = new byte[] { 0x1b, (byte)'[', (byte)'0', (byte)'m' };
-
-            for (int y = 0; y < heightMinusOne; y++)
+            int offset = 0;
+            while (offset < frame.Length)
             {
-                for (int x = 0; x < Width; x++)
+                nint count = write(1, (IntPtr)(start + offset), (nuint)(frame.Length - offset));
+                if (count < 0)
                 {
-                    ref ConsolePixel pixel = ref buffer[bufferIndex++];
-
-                    // Check if we need to flush
-                    if (maxLength - writeOffset < BYTES_PER_PIXEL)
-                    {
-                        write(STDOUT_FILENO, writeBuffer, writeOffset);
-                        writeOffset = 0;
-                    }
-
-                    // Handle foreground color
-                    if (pixel.ForegroundARGB != lastFg)
-                    {
-                        if (pixel.Foreground.A == 0)
-                        {
-                            Buffer.BlockCopy(resetFg, 0, writeBuffer, writeOffset, 5);
-                            writeOffset += 5;
-                        }
-                        else
-                        {
-                            writeOffset += FormatColorSequence(writeBuffer, writeOffset, true, pixel.Foreground);
-                        }
-                        lastFg = pixel.ForegroundARGB;
-                    }
-
-                    // Handle background color
-                    if (pixel.BackgroundARGB != lastBg)
-                    {
-                        if (pixel.Background.A == 0)
-                        {
-                            Buffer.BlockCopy(resetBg, 0, writeBuffer, writeOffset, 5);
-                            writeOffset += 5;
-                        }
-                        else
-                        {
-                            writeOffset += FormatColorSequence(writeBuffer, writeOffset, false, pixel.Background);
-                        }
-                        lastBg = pixel.BackgroundARGB;
-                    }
-
-                    // Write character - optimize for common case of space
-                    if (pixel.Character == '\0' || pixel.Character == ' ')
-                    {
-                        writeBuffer[writeOffset++] = (byte)' ';
-                    }
-                    else
-                    {
-                        // Only encode non-ASCII characters
-                        if (pixel.Character < 128)
-                        {
-                            writeBuffer[writeOffset++] = (byte)pixel.Character;
-                        }
-                        else
-                        {
-                            byte[] charBytes = System.Text.Encoding.UTF8.GetBytes(new[] { pixel.Character });
-                            Buffer.BlockCopy(charBytes, 0, writeBuffer, writeOffset, charBytes.Length);
-                            writeOffset += charBytes.Length;
-                        }
-                    }
-
-                    if (pixel.IsWide) x++;
+                    int error = Marshal.GetLastPInvokeError();
+                    if (error == 4) continue; // EINTR: retry an interrupted write.
+                    throw new Win32Exception(error);
                 }
-
-                // Write newline - direct assignment
-                writeBuffer[writeOffset++] = (byte)'\r';
-                writeBuffer[writeOffset++] = (byte)'\n';
+                if (count == 0) throw new IOException("Terminal output made no progress.");
+                offset += checked((int)count);
             }
-
-            // Reset colors at end
-            Buffer.BlockCopy(resetSequence, 0, writeBuffer, writeOffset, 4);
-            writeOffset += 4;
-
-            // Final write if we have content
-            if (writeOffset > 0)
-            {
-                write(STDOUT_FILENO, writeBuffer, writeOffset);
-            }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Render error: {ex}");
-        }
-    }
-
-    private int FormatColorSequence(byte[] buffer, int offset, bool isForeground, Color color)
-    {
-        // Format: \x1b[38;2;R;G;Bm or \x1b[48;2;R;G;Bm
-        byte[] prefix = new byte[] { 0x1b, (byte)'[', (byte)(isForeground ? '3' : '4'), (byte)'8', (byte)';', (byte)'2', (byte)';' };
-        Array.Copy(prefix, 0, buffer, offset, prefix.Length);
-        int currentOffset = offset + prefix.Length;
-
-        // Write RGB values
-        currentOffset += WriteNumber(buffer, currentOffset, color.R);
-        buffer[currentOffset++] = (byte)';';
-        currentOffset += WriteNumber(buffer, currentOffset, color.G);
-        buffer[currentOffset++] = (byte)';';
-        currentOffset += WriteNumber(buffer, currentOffset, color.B);
-        buffer[currentOffset++] = (byte)'m';
-
-        return currentOffset - offset;
-    }
-
-    private int WriteNumber(byte[] buffer, int offset, int value)
-    {
-        if (value >= 100)
-        {
-            buffer[offset] = (byte)('0' + value / 100);
-            value %= 100;
-            buffer[offset + 1] = (byte)('0' + value / 10);
-            buffer[offset + 2] = (byte)('0' + value % 10);
-            return 3;
-        }
-        else if (value >= 10)
-        {
-            buffer[offset] = (byte)('0' + value / 10);
-            buffer[offset + 1] = (byte)('0' + value % 10);
-            return 2;
-        }
-        else
-        {
-            buffer[offset] = (byte)('0' + value);
-            return 1;
         }
     }
 }

@@ -7,13 +7,17 @@ using MelonUI.Base;
 using static System.Net.Mime.MediaTypeNames;
 using MelonUI.Managers;
 using Microsoft.Win32.SafeHandles;
+using System.Text;
+using System.Numerics;
+using System.IO;
 
-public class Win32Renderer
+public class Win32Renderer : IDisposable
 {
     private const int STD_OUTPUT_HANDLE = -11;
     private const uint ENABLE_PROCESSED_OUTPUT = 0x0001;
     private const uint ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004;
     private const uint DISABLE_NEWLINE_AUTO_RETURN = 0x0008;
+    private const uint CP_UTF8 =65001;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GetStdHandle(int nStdHandle);
@@ -32,9 +36,40 @@ public class Win32Renderer
         out int lpNumberOfCharsWritten,
         IntPtr lpReserved);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool GetConsoleScreenBufferInfo(
+        IntPtr hConsoleOutput,
+        out CONSOLE_SCREEN_BUFFER_INFO lpConsoleScreenBufferInfo);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetConsoleOutputCP(uint wCodePageID);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool SetConsoleCP(uint wCodePageID);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint GetConsoleOutputCP();
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint GetConsoleCP();
+
     private readonly IntPtr consoleHandle;
+    private readonly uint? _originalMode;
+    private readonly uint _originalInputCodePage;
+    private readonly uint _originalOutputCodePage;
+    private bool _disposed;
     private readonly bool vtProcessingEnabled;
-    private char[] writeBuffer;
+    public bool VTProcessingEnabled => vtProcessingEnabled;
+
+    public uint CurrentConsoleMode
+    {
+        get
+        {
+            if (consoleHandle == IntPtr.Zero) return 0;
+            GetConsoleMode(consoleHandle, out uint mode);
+            return mode;
+        }
+    }
+    private char[] writeBuffer = [];
 
     // Conservative estimate of max chars needed per pixel
     private const int CHARS_PER_PIXEL = 50; // Color sequences + char + safety margin
@@ -45,18 +80,44 @@ public class Win32Renderer
 
     public static bool IsSupported = OperatingSystem.IsWindows();
 
+    // Diagnostics toggle
+    public static bool EnableWriteDiagnostics = false;
+    private static int diagnosticsWritesRemaining =5; // limit writes
+
     public Win32Renderer(int width, int height)
     {
         consoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+        _originalInputCodePage = GetConsoleCP();
+        _originalOutputCodePage = GetConsoleOutputCP();
 
         // Check if we can enable VT processing
         if (GetConsoleMode(consoleHandle, out uint mode))
         {
+            _originalMode = mode;
             mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN | ENABLE_PROCESSED_OUTPUT;
             vtProcessingEnabled = SetConsoleMode(consoleHandle, mode);
         }
 
+        // Ensure the console output code page is set to UTF-8 so that
+        // UTF-16 output and VT sequences are interpreted correctly.
+        try
+        {
+            SetConsoleOutputCP(CP_UTF8);
+            SetConsoleCP(CP_UTF8);
+        }
+        catch { }
+
         SetSize(width, height);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        if (_originalMode.HasValue) SetConsoleMode(consoleHandle, _originalMode.Value);
+        if (_originalInputCodePage != 0) SetConsoleCP(_originalInputCodePage);
+        if (_originalOutputCodePage != 0) SetConsoleOutputCP(_originalOutputCodePage);
+        GC.SuppressFinalize(this);
     }
 
     public void SetSize(int width, int height)
@@ -68,23 +129,12 @@ public class Win32Renderer
         writeBuffer = new char[bufferSize];
     }
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern bool GetCurrentConsoleFont(IntPtr hConsoleOutput, bool bMaximumWindow, ref CONSOLE_FONT_INFO lpConsoleCurrentFont);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern COORD GetConsoleFontSize(IntPtr hConsoleOutput, int nFont);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr GetConsoleWindow();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetWindowInfo(IntPtr hwnd, ref WINDOWINFO pwi);
 
 
 
     // Structure to hold rectangle coordinates
     [StructLayout(LayoutKind.Sequential)]
-    private struct RECT
+    public struct RECT
     {
         public int Left;
         public int Top;
@@ -92,7 +142,7 @@ public class Win32Renderer
         public int Bottom;
     }
     [StructLayout(LayoutKind.Sequential)]
-    private struct WINDOWINFO
+    public struct WINDOWINFO
     {
         public uint cbSize;
         public RECT rcWindow;
@@ -106,32 +156,55 @@ public class Win32Renderer
         public ushort wCreatorVersion;
     }
     [StructLayout(LayoutKind.Sequential)]
-    private struct COORD
+    public struct COORD
     {
         public short X;
         public short Y;
     }
+
     [StructLayout(LayoutKind.Sequential)]
-    private struct CONSOLE_FONT_INFO
+    public struct SMALL_RECT
     {
-        public int nFont;
-        public COORD dwFontSize;
+        public short Left;
+        public short Top;
+        public short Right;
+        public short Bottom;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct CONSOLE_SCREEN_BUFFER_INFO
+    public struct CONSOLE_SCREEN_BUFFER_INFO
     {
         public COORD dwSize;
         public COORD dwCursorPosition;
-        public ushort wAttributes;
-        public RECT srWindow;
+        public short wAttributes;
+        public SMALL_RECT srWindow;
         public COORD dwMaximumWindowSize;
     }
 
+    public static CONSOLE_SCREEN_BUFFER_INFO GetBufferInfo()
+    {
+        // Get the handle to the standard output
+        IntPtr hConsoleOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+
+        if (hConsoleOutput == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("Unable to get standard output handle.");
+        }
+
+        // Retrieve the console screen buffer info
+        if (!GetConsoleScreenBufferInfo(hConsoleOutput, out CONSOLE_SCREEN_BUFFER_INFO bufferInfo))
+        {
+            int errorCode = Marshal.GetLastWin32Error();
+            throw new System.ComponentModel.Win32Exception(errorCode, "Failed to retrieve console screen buffer info.");
+        }
+
+        return bufferInfo;
+    }
 
     public static (int width, int height) GetConsoleWindowSize()
     {
-
+        //var info = GetBufferInfo();
+        //return (info.dwSize.X, info.dwSize.Y);
         return (Console.WindowWidth, Console.WindowHeight);
     }
 
@@ -153,24 +226,36 @@ public class Win32Renderer
             int lastBg = default;
             int bufferIndex = 0;
             int widthMinusOne = Width - 1;
-            int heightMinusOne = Height - 1;
 
             // Preallocate common sequences
             char[] resetFg = new[] { '\x1b', '[', '3', '9', 'm' };
             char[] resetBg = new[] { '\x1b', '[', '4', '9', 'm' };
             char[] resetSequence = new[] { '\x1b', '[', '0', 'm' };
 
-            for (int y = 0; y < heightMinusOne; y++)
+            for (int y = 0; y < Height; y++)
             {
                 for (int x = 0; x < Width; x++)
                 {
                     ref ConsolePixel pixel = ref buffer[bufferIndex++];
 
                     // Check if we need to flush
-                    if (maxLength - writeOffset < CHARS_PER_PIXEL)
+                    //if (maxLength - writeOffset < CHARS_PER_PIXEL)
+                    //{
+                    //    WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero);
+                    //    writeOffset = 0;
+                    //}
+
+                    // Character is a raw pixel from OpenGL
+                    if (pixel.Character == '\xFFFF')
                     {
-                        WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero);
-                        writeOffset = 0;
+                        var ole = pixel.ToOleColor();
+                        writeOffset += FormatColorSequence(writeBuffer, writeOffset, false, (byte)pixel.R , (byte)pixel.G, (byte)pixel.B);
+
+                        lastBg = ole;
+
+                        writeBuffer[writeOffset++] = ' ';
+
+                        continue;
                     }
 
                     // Handle foreground color
@@ -210,15 +295,45 @@ public class Win32Renderer
                     }
                     else
                     {
-                        writeBuffer[writeOffset++] = pixel.Character;
+                        // Handle possible surrogate pair: if current is high surrogate and next pixel contains low surrogate, write both code units together
+                        bool consumedNextForSurrogate = false;
+                        if (char.IsHighSurrogate(pixel.Character) && x + 1 < Width && bufferIndex < buffer.Length)
+                        {
+                            char nextCh = buffer[bufferIndex].Character;
+                            if (char.IsLowSurrogate(nextCh))
+                            {
+                                // write both code units
+                                writeBuffer[writeOffset++] = pixel.Character;
+                                writeBuffer[writeOffset++] = nextCh;
+                                // consume next pixel
+                                bufferIndex++;
+                                consumedNextForSurrogate = true;
+                                // advance x because we consumed the next cell
+                                x++;
+                            }
+                        }
+
+                        if (!consumedNextForSurrogate)
+                        {
+                            writeBuffer[writeOffset++] = pixel.Character;
+                        }
                     }
 
-                    if (pixel.IsWide) x++;
+                    // Only advance for wide if we did not already consume the next cell as low surrogate
+                    if (pixel.IsWide && !char.IsHighSurrogate(pixel.Character) && x + 1 < Width)
+                    {
+                        // Skip the reserved filler cell in the buffer as well so indices remain aligned
+                        x++;
+                        bufferIndex++;
+                    }
                 }
 
-                // Write newline - direct assignment
-                writeBuffer[writeOffset++] = '\r';
-                writeBuffer[writeOffset++] = '\n';
+                // Do not advance past the bottom row and scroll the viewport.
+                if (y < Height - 1)
+                {
+                    writeBuffer[writeOffset++] = '\r';
+                    writeBuffer[writeOffset++] = '\n';
+                }
             }
 
             // Reset colors at end
@@ -228,21 +343,50 @@ public class Win32Renderer
             // Final write if we have content
             if (writeOffset > 0)
             {
-                WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero);
+                // If diagnostics enabled, dump the exact char sequence that will be written
+                if (EnableWriteDiagnostics && diagnosticsWritesRemaining >0)
+                {
+                    try
+                    {
+                        string s = new string(writeBuffer,0, writeOffset);
+                        // create readable escape for non-printables
+                        var sb = new StringBuilder();
+                        foreach (char c in s)
+                        {
+                            if (c == '\x1b') sb.Append("\\x1b");
+                            else if (char.IsControl(c) && c != '\r' && c != '\n' && c != '\t') sb.AppendFormat("\\u{0:X4}", (int)c);
+                            else sb.Append(c);
+                        }
+
+                        string path = Path.Combine(Directory.GetCurrentDirectory(), $"win32_writebuf_{DateTime.Now:yyyyMMdd_HHmmss_fff}.txt");
+                        File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+                    }
+                    catch { }
+                    diagnosticsWritesRemaining--;
+                }
+
+                if (!WriteConsoleW(consoleHandle, writeBuffer, writeOffset, out _, IntPtr.Zero))
+                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"Render error: {ex}");
+            throw;
         }
     }
 
+    static readonly char[] prefixForeground = new[] { '\x1b', '[', '3', '8', ';', '2', ';' };
+    static readonly char[] prefixBackground = new[] { '\x1b', '[', '4', '8', ';', '2', ';' };
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int FormatColorSequence(char[] buffer, int offset, bool isForeground, Color color)
     {
         // Format: \x1b[38;2;R;G;Bm or \x1b[48;2;R;G;Bm
-        char[] prefix = new[] { '\x1b', '[', (char)(isForeground ? '3' : '4'), '8', ';', '2', ';' };
-        Buffer.BlockCopy(prefix, 0, buffer, offset * sizeof(char), prefix.Length * sizeof(char));
+        char[] prefix = isForeground ? prefixForeground : prefixBackground;
+
+        //Buffer.BlockCopy(prefix, 0, buffer, offset * sizeof(char), prefix.Length * sizeof(char));
+        CopyWithSIMD(prefix, buffer, offset);
+
         int currentOffset = offset + prefix.Length;
 
         // Write RGB values
@@ -254,6 +398,46 @@ public class Win32Renderer
         buffer[currentOffset++] = 'm';
 
         return currentOffset - offset;
+    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int FormatColorSequence(char[] buffer, int offset, bool isForeground, byte r, byte g, byte b)
+    {
+        // Format: \x1b[38;2;R;G;Bm or \x1b[48;2;R;G;Bm
+        char[] prefix = isForeground ? prefixForeground : prefixBackground;
+
+        //Buffer.BlockCopy(prefix, 0, buffer, offset * sizeof(char), prefix.Length * sizeof(char));
+        CopyWithSIMD(prefix, buffer, offset);
+
+        int currentOffset = offset + prefix.Length;
+
+        // Write RGB values
+        currentOffset += WriteNumber(buffer, currentOffset, r);
+        buffer[currentOffset++] = ';';
+        currentOffset += WriteNumber(buffer, currentOffset, g);
+        buffer[currentOffset++] = ';';
+        currentOffset += WriteNumber(buffer, currentOffset, b);
+        buffer[currentOffset++] = 'm';
+
+        return currentOffset - offset;
+    }
+
+    private void CopyWithSIMD(char[] source, char[] destination, int destinationOffset)
+    {
+        int vectorSize = Vector<ushort>.Count; // SIMD can process multiple characters in parallel
+        int i = 0;
+
+        // Copy in chunks of `vectorSize` characters
+        for (; i <= source.Length - vectorSize; i += vectorSize)
+        {
+            var sourceVector = new Vector<char>(source, i);
+            sourceVector.CopyTo(destination, destinationOffset + i);
+        }
+
+        // Copy remaining elements
+        for (; i < source.Length; i++)
+        {
+            destination[destinationOffset + i] = source[i];
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -278,5 +462,72 @@ public class Win32Renderer
             buffer[offset] = (char)('0' + value);
             return 1;
         }
+    }
+
+    // Diagnostic helper: build readable representation of the sequence for given buffer
+    public string BuildDebugSequence(ConsolePixel[] buffer, int bufWidth, int bufHeight, int dumpRow = -1, int maxRows =8)
+    {
+        var sb = new StringBuilder();
+        try
+        {
+            int bufferIndex =0;
+            int rows = Math.Min(bufHeight, maxRows);
+            for (int y =0; y < bufHeight; y++)
+            {
+                if (dumpRow >=0 && y < dumpRow) { bufferIndex += bufWidth; continue; }
+                if (dumpRow >=0 && y > dumpRow + rows -1) break;
+
+                sb.AppendLine($"--- ROW {y} ---");
+                int x =0;
+                while (x < bufWidth)
+                {
+                    ref ConsolePixel pixel = ref buffer[bufferIndex + x];
+                    // Color tokens
+                    if (pixel.Foreground.A !=0)
+                    {
+                        sb.AppendFormat("[FG=#{0:X2}{1:X2}{2:X2}]", pixel.Foreground.R, pixel.Foreground.G, pixel.Foreground.B);
+                    }
+                    if (pixel.Background.A !=0)
+                    {
+                        sb.AppendFormat("[BG=#{0:X2}{1:X2}{2:X2}]", pixel.Background.R, pixel.Background.G, pixel.Background.B);
+                    }
+
+                    // Character(s)
+                    char ch = pixel.Character;
+                    if (ch == '\0')
+                    {
+                        sb.Append("[SP]");
+                    }
+                    else
+                    {
+                        // If high surrogate and next contains low surrogate, include both
+                        if (char.IsHighSurrogate(ch) && (x +1) < bufWidth)
+                        {
+                            char low = buffer[bufferIndex + x + 1].Character;
+                            if (char.IsLowSurrogate(low))
+                            {
+                                int codePoint = char.ConvertToUtf32(ch, low);
+                                sb.AppendFormat("U+{0:X6}('{1}{2}')", codePoint, ch, low);
+                                sb.Append(pixel.IsWide ? "(W)" : "");
+                                x +=2;
+                                continue;
+                            }
+                        }
+
+                        sb.AppendFormat("U+{0:X4}('{1}')", (int)ch, ch);
+                        sb.Append(pixel.IsWide ? "(W)" : "");
+                    }
+
+                    x++;
+                }
+                sb.AppendLine();
+                bufferIndex += bufWidth;
+            }
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine("BuildDebugSequence error: " + ex.Message);
+        }
+        return sb.ToString();
     }
 }

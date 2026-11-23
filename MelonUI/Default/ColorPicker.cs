@@ -1,233 +1,121 @@
-﻿using MelonUI.Base;
-using Pastel;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using MelonUI.Base;
 
-namespace MelonUI.Default
+namespace MelonUI.Default;
+
+/// <summary>Three RGB sliders with live preview, commit and cancellation.</summary>
+public class ColorPicker : UIElement
 {
-    public class ColorPicker : UIElement
+    private Color _colorValue = Color.Cyan;
+    private Color _originalColor = Color.Cyan;
+    private readonly Stopwatch _repeat = Stopwatch.StartNew();
+    private ConsoleKey _lastKey;
+    private int _repeats;
+    private string _digits = "";
+    public int SelectedChannel { get; private set; }
+    public Color ColorValue
     {
-        private int index;
-        private int accel = 1;
-
-        private Color _ColorValue = Color.Cyan;
-        public Color ColorValue
+        get => (Color)(GetBoundValue(nameof(ColorValue), _colorValue) ?? _colorValue);
+        set
         {
-            get
-            {
-                return (Color)GetBoundValue(nameof(ColorValue), _ColorValue);
-            }
-            set
-            {
-                SetBoundValue(nameof(ColorValue), value, ref _ColorValue);
-            }
-        }
-        private Stopwatch accelCounter = Stopwatch.StartNew();
-        private Stopwatch timer = Stopwatch.StartNew();
-
-        public ColorPicker()
-        {
-            RegisterKeyboardControl(ConsoleKey.LeftArrow, () => 
-            {
-                if (timer.ElapsedMilliseconds < 100)
-                {
-                    if (accelCounter.ElapsedMilliseconds > 500)
-                    {
-                        accel+=3;
-                        accelCounter.Restart();
-                    }
-                }
-                else
-                {
-                    accel = 0;
-                }
-                timer.Restart();
-                switch (index)
-                {
-                    case 0:
-                        int R = ColorValue.R - (1 + accel) >= 0 ? ColorValue.R - (1 + accel) : 0;
-                        ColorValue = Color.FromArgb(255, R, ColorValue.G, ColorValue.B);
-                        break;
-                    case 1:
-                        int G = ColorValue.G - (1 + accel) >= 0 ? ColorValue.G - (1 + accel) : 0;
-                        ColorValue = Color.FromArgb(255, ColorValue.R, G, ColorValue.B);
-                        break;
-                    case 2:
-                        int B = ColorValue.B - (1 + accel) >= 0 ? ColorValue.B - (1 + accel) : 0;
-                        ColorValue = Color.FromArgb(255, ColorValue.R, ColorValue.G, B);
-                        break;
-
-                }
-            }, "Reduce Color Value");
-            RegisterKeyboardControl(ConsoleKey.RightArrow, () =>
-            {
-                if (timer.ElapsedMilliseconds < 100)
-                {
-                    if(accelCounter.ElapsedMilliseconds > 500)
-                    {
-                        accel+=3;
-                        accelCounter.Restart();
-                    }
-                }
-                else
-                {
-                    accel = 0;
-                }
-                timer.Restart();
-                switch (index)
-                {
-                    case 0:
-                        int R = ColorValue.R + (1 + accel) >= 0 ? ColorValue.R + (1 + accel) : 0;
-                        ColorValue = Color.FromArgb(255, R, ColorValue.G, ColorValue.B);
-                        break;
-                    case 1:
-                        int G = ColorValue.G + (1 + accel) >= 0 ? ColorValue.G + (1 + accel) : 0;
-                        ColorValue = Color.FromArgb(255, ColorValue.R, G, ColorValue.B);
-                        break;
-                    case 2:
-                        int B = ColorValue.B + (1 + accel) >= 0 ? ColorValue.B + (1 + accel) : 0;
-                        ColorValue = Color.FromArgb(255, ColorValue.R, ColorValue.G, B);
-                        break;
-
-                }
-            }, "Increase Color Value");
-            RegisterKeyboardControl(ConsoleKey.DownArrow, () =>
-            {
-                switch (index)
-                {
-                    case 0:
-                        index = 1;
-                        break;
-                    case 1:
-                        index = 2;
-                        break;
-                    case 2:
-                        index = 0;
-                        break;
-
-                }
-            }, "Increase Color Value");
-            RegisterKeyboardControl(ConsoleKey.UpArrow, () =>
-            {
-                switch (index)
-                {
-                    case 0:
-                        index = 2;
-                        break;
-                    case 1:
-                        index = 0;
-                        break;
-                    case 2:
-                        index = 1;
-                        break;
-
-                }
-            }, "Increase Color Value");
-        }
-        Color CombineColors(Color color1, Color color2)
-        {
-            // Average the RGB values of the two colors
-            int r = (color1.R + color2.R) / 2;
-            int g = (color1.G + color2.G) / 2;
-            int b = (color1.B + color2.B) / 2;
-
-            return Color.FromArgb(255, r, g, b);
-        }
-
-        protected override void RenderContent(ConsoleBuffer buffer)
-        {
-            // [#################------░▶
-            // [#######################]
-            // [#######----------------]
-            var renderClr = ColorValue;
-            var renderR = Color.FromArgb(255, 255, 255 - renderClr.R, 255 - renderClr.R);
-            var renderG = Color.FromArgb(255, 255 - renderClr.G, 255, 255 - renderClr.G);
-            var renderB = Color.FromArgb(255, 255 - renderClr.B, 255 - renderClr.B, 255);
-
-            int width = ActualWidth - (ShowBorder ? 10 : 8);
-            int height = ActualHeight - (ShowBorder ? 2 : 0);
-
-            int x = ShowBorder ? 1 : 0;
-            int y = ShowBorder ? 1 : 0;
-
-            double RedPercent = (double)ColorValue.R / (double)256;
-            double GreenPercent = (double)ColorValue.G / (double)256;
-            double BluePercent = (double)ColorValue.B / (double)256;
-            RedPercent = RedPercent == 0 ? 0.001 : RedPercent;
-            GreenPercent = GreenPercent == 0 ? 0.001 : GreenPercent;
-            BluePercent = BluePercent == 0 ? 0.001 : BluePercent;
-
-            double RedLineFront = (width) * RedPercent;
-            double RedLineBack = (width) - RedLineFront;
-
-            double GreenLineFront = (width) * GreenPercent;
-            double GreenLineBack = (width) - GreenLineFront;
-
-            double BlueLineFront = (width) * BluePercent;
-            double BlueLineBack = (width) - BlueLineFront;
-
-
-            int sTop = Console.CursorTop;
-            //Console.WriteLine($"{$"Old Color -".Pastel(CurColor)}{$"> {StateManager.StringsManager.GetString("NewColorDisplay")}".Pastel(NewColor)}");
-
-            // Render the R,G, and B lines
-            string RedBar = $"{new string('░', (int)RedLineFront)}█{new string('░', (int)RedLineBack)}";
-            string GreenBar = $"{new string('░', (int)GreenLineFront)}█{new string('░', (int)GreenLineBack)}";
-            string BlueBar = $"{new string('░', (int)BlueLineFront)}█{new string('░', (int)BlueLineBack)}";
-
-            string rStr = $"┌{RedBar}";
-            string gStr = $"├{GreenBar}";
-            string bStr = $"├{BlueBar}";
-            string nStr = $"└      Output Color";
-
-            buffer.WriteString(x,y, rStr, renderR, Background);
-            buffer.WriteString(x,y+1, gStr, renderG, Background);
-            buffer.WriteString(x,y+2, bStr, renderB, Background);
-            buffer.WriteString(x,y+3, "│", renderClr, Background);
-            buffer.WriteString(x,y+4, nStr, Foreground, Background);
-            buffer.WriteString(x,y+4, "└█████", renderClr, Color.FromArgb(255, 10,10,10));
-
-            buffer.SetPixel(x, y, '┌', Color.FromArgb(255, ColorValue.R, 0, 0), Background);
-            var combinedColor1 = CombineColors(Color.FromArgb(255, ColorValue.R, 0, 0), Color.FromArgb(255, 0, ColorValue.G, 0));
-            var combinedColor2 = CombineColors(combinedColor1, Color.FromArgb(255, 0, 0, ColorValue.B));
-            buffer.SetPixel(x, y+1, '├', Color.FromArgb(255, ColorValue.R, ColorValue.G, 0), Background);
-            buffer.SetPixel(x, y+2, '├', Color.FromArgb(255, ColorValue.R, ColorValue.G, ColorValue.B), Background);
-
-            string rStr2 = $"{renderClr.R.ToString("000")}";
-            string gStr2 = $"{renderClr.G.ToString("000")}";
-            string bStr2 = $"{renderClr.B.ToString("000")}";
-
-            Color fg = Foreground;
-            Color bg = Color.FromArgb(255, 120, 120, 120);
-            Color sbg = Color.FromArgb(255, 200, 200, 200);
-
-            buffer.WriteString(width + 5,y, rStr2, index == 0 ? fg : bg, Background);
-            buffer.WriteString(width + 5,y+1, gStr2, index == 1 ? fg : bg, Background);
-            buffer.WriteString(width + 5, y+2, bStr2, index == 2 ? fg : bg, Background);
-
-            buffer.SetPixel((int)RedLineFront + 3, y, '█', index == 0 ? fg : sbg, Background);
-            buffer.SetPixel((int)GreenLineFront + 3, y + 1, '█', index == 1 ? fg : sbg, Background);
-            buffer.SetPixel((int)BlueLineFront + 3, y + 2, '█', index == 2 ? fg : sbg, Background);
-
-            //for (int i = 0; i < width - 2; i++)
-            //{
-            //    buffer.SetPixel(i + 1, 1, '█', renderR, Color.Black);
-            //    buffer.SetPixel(i + 1, 2, '█', renderG, Color.Black);
-            //    buffer.SetPixel(i + 1, 3, '█', renderB, Color.Black);
-            //}
-
-            //buffer.SetPixel(width - 1, 1, '', renderR, Color.Black);
-            //buffer.SetPixel(width - 1, 2, '', renderG, Color.Black);
-            //buffer.SetPixel(width - 1, 3, '', renderB, Color.Black);
-            //
-            //buffer.SetPixel(width, 1, '┐', renderR, Color.Black);
-            //buffer.SetPixel(width, 2, '┤', renderG, Color.Black);
-            //buffer.SetPixel(width, 3, '┤', renderB, Color.Black);
+            var before = ColorValue;
+            SetBoundValue(nameof(ColorValue), value, ref _colorValue);
+            if (before.ToArgb() != ColorValue.ToArgb()) ColorChanged?.Invoke(ColorValue);
         }
     }
+    public Color OriginalColor => _originalColor;
+    public event Action<Color>? ColorChanged;
+    public event Action<Color>? Confirmed;
+    public event Action<Color>? Cancelled;
+
+    public ColorPicker() { Height = "8"; }
+    public void BeginEdit(Color color)
+    {
+        VerifyAccess(); _originalColor = color; SelectedChannel = 0; _repeats = 0; _digits = ""; ColorValue = color;
+        if (!IsDisposed) Invalidate();
+    }
+    public void Commit() { VerifyAccess(); _originalColor = ColorValue; Confirmed?.Invoke(ColorValue); }
+    public void Cancel() { VerifyAccess(); ColorValue = _originalColor; Cancelled?.Invoke(ColorValue); }
+
+    protected override void OnAttachedToWindow(MelonUI.Managers.ConsoleWindowManager window)
+    { _originalColor = ColorValue; base.OnAttachedToWindow(window); }
+    protected override void OnPropertyChanged(string name)
+    {
+        if (name == nameof(IsFocused)) { _repeats = 0; _lastKey = ConsoleKey.NoName; _digits = ""; }
+        base.OnPropertyChanged(name);
+    }
+    public override bool TryHandleKey(ConsoleKeyInfo key)
+    {
+        if (LockControls || !IsEffectivelyVisible || !IsEffectivelyEnabled) return false;
+        if (base.TryHandleKey(key)) return true;
+        if ((key.Modifiers & (ConsoleModifiers.Alt | ConsoleModifiers.Control)) != 0) return false;
+        switch (key.Key)
+        {
+            case ConsoleKey.UpArrow: SelectedChannel = Math.Max(0, SelectedChannel - 1); _repeats = 0; _digits = ""; Invalidate(); return true;
+            case ConsoleKey.DownArrow: SelectedChannel = Math.Min(2, SelectedChannel + 1); _repeats = 0; _digits = ""; Invalidate(); return true;
+            case ConsoleKey.Enter: Commit(); return true;
+            case ConsoleKey.Escape: Cancel(); return true;
+            case ConsoleKey.Home: SetChannel(0); return true;
+            case ConsoleKey.End: SetChannel(255); return true;
+            case ConsoleKey.LeftArrow:
+            case ConsoleKey.RightArrow:
+                _digits = "";
+                _repeats = key.Key == _lastKey && _repeat.ElapsedMilliseconds < 120 ? _repeats + 1 : 0;
+                _lastKey = key.Key; _repeat.Restart();
+                int step = key.Modifiers.HasFlag(ConsoleModifiers.Shift) ? 10 : Math.Clamp(1 + _repeats / 5, 1, 25);
+                int value = SelectedChannel switch { 0 => ColorValue.R, 1 => ColorValue.G, _ => ColorValue.B };
+                SetChannel(value + (key.Key == ConsoleKey.LeftArrow ? -step : step)); return true;
+            default:
+                if (key.KeyChar is >= '0' and <= '9')
+                {
+                    if (_digits.Length >= 3) _digits = "";
+                    _digits += key.KeyChar;
+                    SetChannel(int.Parse(_digits, System.Globalization.CultureInfo.InvariantCulture)); return true;
+                }
+                return false;
+        }
+    }
+    public bool TrySetHex(string? value)
+    {
+        VerifyAccess();
+        value = value?.Trim().TrimStart('#');
+        if (value?.Length != 6 || !int.TryParse(value, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out int rgb)) return false;
+        ColorValue = Color.FromArgb(ColorValue.A, (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255); return true;
+    }
+    private void SetChannel(int value)
+    {
+        value = Math.Clamp(value, 0, 255);
+        var color = ColorValue;
+        ColorValue = Color.FromArgb(color.A, SelectedChannel == 0 ? value : color.R,
+            SelectedChannel == 1 ? value : color.G, SelectedChannel == 2 ? value : color.B);
+    }
+    protected override void RenderContent(ConsoleBuffer buffer)
+    {
+        var a = ContentRect;
+        if (a.Width == 0 || a.Height == 0) return;
+        var color = ColorValue;
+        for (int channel = 0; channel < 3 && channel < a.Height; channel++)
+        {
+            int value = channel switch { 0 => color.R, 1 => color.G, _ => color.B };
+            var tint = channel switch { 0 => Color.FromArgb(255, 255 - value, 255 - value),
+                1 => Color.FromArgb(255 - value, 255, 255 - value), _ => Color.FromArgb(255 - value, 255 - value, 255) };
+            int barWidth = Math.Max(0, a.Width - 9);
+            string bar = "";
+            if (barWidth > 0)
+            {
+                int marker = (int)Math.Round(value / 255d * (barWidth - 1));
+                bar = "[" + new string('─', marker) + "█" + new string('─', barWidth - marker - 1) + "] ";
+            }
+            string text = $"{(channel == SelectedChannel && IsFocused ? '>' : ' ')}{"RGB"[channel]} {bar}{value:000}";
+            ControlDrawing.Text(buffer, a.X, a.Y + channel, text, a.Width, tint, Background);
+        }
+        if (a.Height > 3) ControlDrawing.Text(buffer, a.X, a.Y + 3, $"Old #{_originalColor.R:X2}{_originalColor.G:X2}{_originalColor.B:X2}", a.Width, _originalColor, Background);
+        if (a.Height > 4) ControlDrawing.Text(buffer, a.X, a.Y + 4, $"New #{color.R:X2}{color.G:X2}{color.B:X2}  ███", a.Width, color, Background);
+        if (a.Height > 5) ControlDrawing.Text(buffer, a.X, a.Y + 5, "↑↓ channel  ←→ value  Shift:10  Enter:save  Esc:cancel", a.Width, Foreground, Background);
+    }
+    protected override void DisposeCore() { ColorChanged = null; Confirmed = null; Cancelled = null; base.DisposeCore(); }
 }
+
+/// <summary>Explicit RGB name for consumers; ColorPicker remains the short control name.</summary>
+public class RgbColorPicker : ColorPicker { }
